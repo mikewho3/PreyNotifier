@@ -1,0 +1,8 @@
+## Interface: 120001 
+## Title: PreyNotifier
+## Notes: Alerts and Notifies You of Midnight Prey ambushes.
+## Author: MikeWho3
+## Version: 2.00
+## SavedVariables: PreyNotifierDB
+
+PreyNotifier.lua
