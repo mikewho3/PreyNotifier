@@ -5,4 +5,5 @@
 ## Version: 2.01-alpha
 ## SavedVariables: PreyNotifierDB
 ## X-Wago-ID: kGryL7Ky
+## X-Curse-Project-ID: 1484351
 PreyNotifier.lua
