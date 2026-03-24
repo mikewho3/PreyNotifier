@@ -1,6 +1,14 @@
 local PreyAddon = CreateFrame("Frame")
 local isEnabled = true
 local lastAlertTime = 0 
+local lastEchoAlertTime = 0
+
+-- Forward Declarations
+local UpdateTargetList
+local UpdateDebuffs
+local UpdateProgressBar
+local CustomTracker
+
 local ValidHuntZones = {
 
     [2395] = true, -- Eversong Woods
@@ -8,7 +16,8 @@ local ValidHuntZones = {
 	[2536] = true, -- Atal'aman
     [2405] = true, -- Voidstorm
 	[2444] = true, -- Slayer's Rise
-    [0004] = true, -- PlaceHolder until I find the value
+    [2576] = true, -- The Den - Harandar
+    [2413] = true, -- Harandar
 }
 
 local function IsInHuntZone()
@@ -17,6 +26,20 @@ local function IsInHuntZone()
         return true
     end
     return false
+end
+
+local function UpdateTargetButton()
+    if InCombatLockdown() then return end
+    if not PreyNotifierDB then return end
+    
+    local btn = _G["PreyNotifierTargetBtn"]
+    if not btn then return end
+
+    if not IsInHuntZone() or PreyNotifierDB["_ShowTargetBtn"] == false or not PreyNotifierDB["_PrimaryTarget"] then
+        btn:Hide()
+    else
+        btn:Show()
+    end
 end
 
 -- HELPER COMMAND: Type /pnzone to get your current Map ID
@@ -44,7 +67,7 @@ _G["BINDING_NAME_CLICK PreyNotifierTargetBtn:MiddleButton"] = "Use Disarmed Trap
 -- ==========================================
 local UIFrame = CreateFrame("Frame", "PreyNotifierUI", UIParent, "BasicFrameTemplateWithInset")
 UIFrame:SetFrameStrata("DIALOG")
-UIFrame:SetSize(375, 600) 
+UIFrame:SetSize(360, 450) 
 UIFrame:SetPoint("CENTER")
 UIFrame:SetMovable(true)
 UIFrame:EnableMouse(true)
@@ -62,14 +85,19 @@ UIFrame.title:SetText("PreyNotifier")
 -- TABS SETUP
 -- ==========================================
 local Tab1Btn = CreateFrame("Button", nil, UIFrame, "UIPanelButtonTemplate")
-Tab1Btn:SetSize(100, 25)
+Tab1Btn:SetSize(80, 22)
 Tab1Btn:SetPoint("TOPLEFT", UIFrame, "TOPLEFT", 15, -30)
 Tab1Btn:SetText("Prey List")
 
 local Tab2Btn = CreateFrame("Button", nil, UIFrame, "UIPanelButtonTemplate")
-Tab2Btn:SetSize(100, 25)
+Tab2Btn:SetSize(80, 22)
 Tab2Btn:SetPoint("LEFT", Tab1Btn, "RIGHT", 5, 0)
 Tab2Btn:SetText("Options")
+
+local Tab3Btn = CreateFrame("Button", nil, UIFrame, "UIPanelButtonTemplate")
+Tab3Btn:SetSize(80, 22)
+Tab3Btn:SetPoint("LEFT", Tab2Btn, "RIGHT", 5, 0)
+Tab3Btn:SetText("Sound")
 
 local PreyListTab = CreateFrame("Frame", nil, UIFrame)
 PreyListTab:SetPoint("TOPLEFT", UIFrame, "TOPLEFT", 0, -60)
@@ -80,18 +108,36 @@ OptionsTab:SetPoint("TOPLEFT", UIFrame, "TOPLEFT", 0, -60)
 OptionsTab:SetPoint("BOTTOMRIGHT", UIFrame, "BOTTOMRIGHT", 0, 0)
 OptionsTab:Hide()
 
+local SoundTab = CreateFrame("Frame", nil, UIFrame)
+SoundTab:SetPoint("TOPLEFT", UIFrame, "TOPLEFT", 0, -60)
+SoundTab:SetPoint("BOTTOMRIGHT", UIFrame, "BOTTOMRIGHT", 0, 0)
+SoundTab:Hide()
+
 Tab1Btn:SetScript("OnClick", function()
     PreyListTab:Show()
     OptionsTab:Hide()
+    SoundTab:Hide()
     Tab1Btn:LockHighlight()
     Tab2Btn:UnlockHighlight()
+    Tab3Btn:UnlockHighlight()
 end)
 
 Tab2Btn:SetScript("OnClick", function()
     PreyListTab:Hide()
     OptionsTab:Show()
+    SoundTab:Hide()
     Tab1Btn:UnlockHighlight()
     Tab2Btn:LockHighlight()
+    Tab3Btn:UnlockHighlight()
+end)
+
+Tab3Btn:SetScript("OnClick", function()
+    PreyListTab:Hide()
+    OptionsTab:Hide()
+    SoundTab:Show()
+    Tab1Btn:UnlockHighlight()
+    Tab2Btn:UnlockHighlight()
+    Tab3Btn:LockHighlight()
 end)
 Tab1Btn:LockHighlight() -- Default to tab 1
 
@@ -102,27 +148,31 @@ Tab1Btn:LockHighlight() -- Default to tab 1
 -- Text Input Box
 local InputBox = CreateFrame("EditBox", nil, PreyListTab, "InputBoxTemplate")
 InputBox:SetPoint("TOPLEFT", 25, -10)
-InputBox:SetSize(180, 30)
+InputBox:SetSize(150, 25)
 InputBox:SetAutoFocus(false)
 
 -- Add Target Button
 local AddButton = CreateFrame("Button", nil, PreyListTab, "UIPanelButtonTemplate")
 AddButton:SetPoint("LEFT", InputBox, "RIGHT", 10, 0)
-AddButton:SetSize(60, 25)
+AddButton:SetSize(50, 22)
 AddButton:SetText("Add")
 
 -- ==========================================
 -- TAB 2: OPTIONS CONTENT
 -- ==========================================
+local OptionsHeader = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+OptionsHeader:SetPoint("TOPLEFT", 20, -15)
+OptionsHeader:SetText("Bar/Tracker only displays in the Prey Zone")
+
 -- Timer Slider Label
 local SliderLabel = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-SliderLabel:SetPoint("TOPLEFT", 20, -20) 
+SliderLabel:SetPoint("TOPLEFT", OptionsHeader, "BOTTOMLEFT", 0, -15) 
 SliderLabel:SetText("Alert Cooldown (Seconds):")
 
 -- The Cooldown Slider
 local CooldownSlider = CreateFrame("Slider", "PreyNotifierCooldownSlider", OptionsTab, "OptionsSliderTemplate")
-CooldownSlider:SetPoint("TOPLEFT", SliderLabel, "BOTTOMLEFT", 0, -10) 
-CooldownSlider:SetSize(180, 20)
+CooldownSlider:SetPoint("TOPLEFT", SliderLabel, "BOTTOMLEFT", 0, -5) 
+CooldownSlider:SetSize(160, 16)
 CooldownSlider:SetMinMaxValues(30, 120)
 CooldownSlider:SetValueStep(1)
 CooldownSlider:SetObeyStepOnDrag(true)
@@ -132,8 +182,9 @@ SliderValueText:SetPoint("LEFT", CooldownSlider, "RIGHT", 10, 0)
 
 -- Progress Bar Toggle Checkbox
 local ShowBarChk = CreateFrame("CheckButton", "PreyNotifierShowBarChk", OptionsTab, "UICheckButtonTemplate")
-ShowBarChk:SetPoint("TOPLEFT", CooldownSlider, "BOTTOMLEFT", -5, -20) 
-ShowBarChk.text = ShowBarChk:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+ShowBarChk:SetSize(24, 24)
+ShowBarChk:SetPoint("TOPLEFT", CooldownSlider, "BOTTOMLEFT", -5, -15) 
+ShowBarChk.text = ShowBarChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 ShowBarChk.text:SetPoint("LEFT", ShowBarChk, "RIGHT", 5, 0)
 ShowBarChk.text:SetText("Show On-Screen Progress Bar")
 
@@ -143,21 +194,48 @@ ShowBarSubtext:SetPoint("TOPLEFT", ShowBarChk, "BOTTOMLEFT", 5, -2)
 ShowBarSubtext:SetText("Displays ONLY when an active hunt is detected in the current zone.")
 ShowBarSubtext:SetTextColor(0.65, 0.55, 0.15) -- A dimmed, muted gold/yellow
 
+local SubText2 = ShowBarChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+SubText2:SetPoint("TOPLEFT", ShowBarSubtext, "BOTTOMLEFT", 0, -2) 
+SubText2:SetText("Blizzard only updates Prey status every 2-5 Hunt Progress Points")
+SubText2:SetTextColor(0.65, 0.55, 0.15)
+
 
 ShowBarChk:SetScript("OnClick", function(self)
     if PreyNotifierDB then
         PreyNotifierDB["_ShowProgressBar"] = self:GetChecked()
     end
-    -- Call the global function if it exists
-    if UpdateProgressBar then UpdateProgressBar() end
+    UpdateProgressBar()
+end)
+
+-- ------------------------------------------
+-- TARGET BUTTON TOGGLE CHECKBOX
+-- ------------------------------------------
+local ShowTargetBtnChk = CreateFrame("CheckButton", "PreyNotifierShowTargetBtnChk", OptionsTab, "UICheckButtonTemplate")
+ShowTargetBtnChk:SetSize(24, 24)
+ShowTargetBtnChk:SetPoint("TOPLEFT", SubText2, "BOTTOMLEFT", -5, -15) 
+ShowTargetBtnChk.text = ShowTargetBtnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ShowTargetBtnChk.text:SetPoint("LEFT", ShowTargetBtnChk, "RIGHT", 5, 0)
+ShowTargetBtnChk.text:SetText("Show On-Screen Targeting Button")
+
+local ShowTargetBtnSubtext = ShowTargetBtnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ShowTargetBtnSubtext:SetPoint("TOPLEFT", ShowTargetBtnChk, "BOTTOMLEFT", 5, -2) 
+ShowTargetBtnSubtext:SetText("Left Click to Target - Middle Click to Throw a Trap")
+ShowTargetBtnSubtext:SetTextColor(0.65, 0.55, 0.15) 
+
+ShowTargetBtnChk:SetScript("OnClick", function(self)
+    if PreyNotifierDB then
+        PreyNotifierDB["_ShowTargetBtn"] = self:GetChecked()
+    end
+    UpdateTargetButton()
 end)
 
 -- ------------------------------------------
 -- HIDE BLIZZARD UI CHECKBOX
 -- ------------------------------------------
 local HideBlizzChk = CreateFrame("CheckButton", "PreyNotifierHideBlizzChk", OptionsTab, "UICheckButtonTemplate")
-HideBlizzChk:SetPoint("TOPLEFT", ShowBarSubtext, "BOTTOMLEFT", -5, -10) 
-HideBlizzChk.text = HideBlizzChk:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+HideBlizzChk:SetSize(24, 24)
+HideBlizzChk:SetPoint("TOPLEFT", ShowTargetBtnSubtext, "BOTTOMLEFT", -5, -10) 
+HideBlizzChk.text = HideBlizzChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 HideBlizzChk.text:SetPoint("LEFT", HideBlizzChk, "RIGHT", 5, 0)
 HideBlizzChk.text:SetText("Hide Default Blizzard Tracker")
 
@@ -170,18 +248,154 @@ HideBlizzChk:SetScript("OnClick", function(self)
     if PreyNotifierDB then
         PreyNotifierDB["_HideBlizzUI"] = self:GetChecked()
     end
-    if UpdateProgressBar then UpdateProgressBar() end
+    UpdateProgressBar()
 end)
 
 
+-- ==========================================
+-- TAB 3: SOUND CONTENT
+-- ==========================================
+local EnableSoundChk = CreateFrame("CheckButton", "PreyNotifierEnableSoundChk", SoundTab, "UICheckButtonTemplate")
+EnableSoundChk:SetSize(24, 24)
+EnableSoundChk:SetPoint("TOPLEFT", 20, -15)
+EnableSoundChk.text = EnableSoundChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+EnableSoundChk.text:SetPoint("LEFT", EnableSoundChk, "RIGHT", 5, 0)
+EnableSoundChk.text:SetText("Enable Ambush Alert Sounds")
 
-local TestButton = CreateFrame("Button", nil, OptionsTab, "UIPanelButtonTemplate")
-TestButton:SetPoint("TOPLEFT", HideBlizzSubtext, "BOTTOMLEFT", -5, -20)
-TestButton:SetSize(100, 25)
-TestButton:SetText("Test Sound")
-TestButton:SetScript("OnClick", function()
-    pcall(PlaySoundFile, 552035, "Dialog")
-    print("|cff00FF00PreyNotifier:|r Playing test sound on Dialog channel.")
+EnableSoundChk:SetScript("OnClick", function(self)
+    if PreyNotifierDB then
+        PreyNotifierDB["_PlaySound"] = self:GetChecked()
+    end
+end)
+
+local SoundInputLabel = SoundTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+SoundInputLabel:SetPoint("TOPLEFT", EnableSoundChk, "BOTTOMLEFT", 5, -10)
+SoundInputLabel:SetText("Ambush Alert Sound ID:")
+
+local SoundInputBox = CreateFrame("EditBox", nil, SoundTab, "InputBoxTemplate")
+SoundInputBox:SetPoint("TOPLEFT", SoundInputLabel, "BOTTOMLEFT", 0, -5)
+SoundInputBox:SetSize(70, 25)
+SoundInputBox:SetNumeric(true)
+SoundInputBox:SetMaxLetters(8)
+SoundInputBox:SetAutoFocus(false)
+
+local SoundSaveBtn = CreateFrame("Button", nil, SoundTab, "UIPanelButtonTemplate")
+SoundSaveBtn:SetPoint("LEFT", SoundInputBox, "RIGHT", 10, 0)
+SoundSaveBtn:SetSize(55, 22)
+SoundSaveBtn:SetText("Save")
+
+local SoundTestBtn = CreateFrame("Button", nil, SoundTab, "UIPanelButtonTemplate")
+SoundTestBtn:SetPoint("LEFT", SoundSaveBtn, "RIGHT", 5, 0)
+SoundTestBtn:SetSize(55, 22)
+SoundTestBtn:SetText("Test")
+
+local SoundDefaultBtn = CreateFrame("Button", nil, SoundTab, "UIPanelButtonTemplate")
+SoundDefaultBtn:SetPoint("LEFT", SoundTestBtn, "RIGHT", 5, 0)
+SoundDefaultBtn:SetSize(55, 22)
+SoundDefaultBtn:SetText("Reset")
+
+local function SaveSoundID()
+    local text = SoundInputBox:GetText()
+    local num = tonumber(text)
+    if num then
+        if PreyNotifierDB then PreyNotifierDB["_SoundFile"] = num end
+        SoundInputBox:ClearFocus()
+        print("|cff00FF00PreyNotifier:|r Sound ID saved as " .. num)
+    else
+        print("|cffFF0000PreyNotifier:|r Invalid Sound ID.")
+    end
+end
+
+SoundSaveBtn:SetScript("OnClick", SaveSoundID)
+SoundInputBox:SetScript("OnEnterPressed", SaveSoundID)
+
+SoundTestBtn:SetScript("OnClick", function()
+    local soundID = PreyNotifierDB and PreyNotifierDB["_SoundFile"] or 552035
+    local success = pcall(PlaySoundFile, soundID, "Dialog")
+    if not success then
+        print("|cffFF0000PreyNotifier Error:|r Could not play sound. Invalid or restricted Sound ID.")
+    else
+        print("|cff00FF00PreyNotifier:|r Playing test sound: " .. soundID)
+    end
+end)
+
+SoundDefaultBtn:SetScript("OnClick", function()
+    if PreyNotifierDB then PreyNotifierDB["_SoundFile"] = 552035 end
+    SoundInputBox:SetText("552035")
+    print("|cff00FF00PreyNotifier:|r Sound ID reset to default (552035).")
+end)
+
+-- ------------------------------------------
+-- ECHO OF PREDATION ALERT SOUND SETTINGS
+-- ------------------------------------------
+local EnableEchoSoundChk = CreateFrame("CheckButton", "PreyNotifierEnableEchoSoundChk", SoundTab, "UICheckButtonTemplate")
+EnableEchoSoundChk:SetSize(24, 24)
+EnableEchoSoundChk:SetPoint("TOPLEFT", EnableSoundChk, "BOTTOMLEFT", 0, -60)
+EnableEchoSoundChk.text = EnableEchoSoundChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+EnableEchoSoundChk.text:SetPoint("LEFT", EnableEchoSoundChk, "RIGHT", 5, 0)
+EnableEchoSoundChk.text:SetText("Enable Echo of Predation Alert Sounds")
+
+EnableEchoSoundChk:SetScript("OnClick", function(self)
+    if PreyNotifierDB then
+        PreyNotifierDB["_PlayEchoSound"] = self:GetChecked()
+    end
+end)
+
+local EchoSoundInputLabel = SoundTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+EchoSoundInputLabel:SetPoint("TOPLEFT", EnableEchoSoundChk, "BOTTOMLEFT", 5, -10)
+EchoSoundInputLabel:SetText("Echo Alert Sound ID:")
+
+local EchoSoundInputBox = CreateFrame("EditBox", nil, SoundTab, "InputBoxTemplate")
+EchoSoundInputBox:SetPoint("TOPLEFT", EchoSoundInputLabel, "BOTTOMLEFT", 0, -5)
+EchoSoundInputBox:SetSize(70, 25)
+EchoSoundInputBox:SetNumeric(true)
+EchoSoundInputBox:SetMaxLetters(8)
+EchoSoundInputBox:SetAutoFocus(false)
+
+local EchoSoundSaveBtn = CreateFrame("Button", nil, SoundTab, "UIPanelButtonTemplate")
+EchoSoundSaveBtn:SetPoint("LEFT", EchoSoundInputBox, "RIGHT", 10, 0)
+EchoSoundSaveBtn:SetSize(55, 22)
+EchoSoundSaveBtn:SetText("Save")
+
+local EchoSoundTestBtn = CreateFrame("Button", nil, SoundTab, "UIPanelButtonTemplate")
+EchoSoundTestBtn:SetPoint("LEFT", EchoSoundSaveBtn, "RIGHT", 5, 0)
+EchoSoundTestBtn:SetSize(55, 22)
+EchoSoundTestBtn:SetText("Test")
+
+local EchoSoundDefaultBtn = CreateFrame("Button", nil, SoundTab, "UIPanelButtonTemplate")
+EchoSoundDefaultBtn:SetPoint("LEFT", EchoSoundTestBtn, "RIGHT", 5, 0)
+EchoSoundDefaultBtn:SetSize(55, 22)
+EchoSoundDefaultBtn:SetText("Reset")
+
+local function SaveEchoSoundID()
+    local text = EchoSoundInputBox:GetText()
+    local num = tonumber(text)
+    if num then
+        if PreyNotifierDB then PreyNotifierDB["_EchoSoundFile"] = num end
+        EchoSoundInputBox:ClearFocus()
+        print("|cff00FF00PreyNotifier:|r Echo Sound ID saved as " .. num)
+    else
+        print("|cffFF0000PreyNotifier:|r Invalid Echo Sound ID.")
+    end
+end
+
+EchoSoundSaveBtn:SetScript("OnClick", SaveEchoSoundID)
+EchoSoundInputBox:SetScript("OnEnterPressed", SaveEchoSoundID)
+
+EchoSoundTestBtn:SetScript("OnClick", function()
+    local soundID = PreyNotifierDB and PreyNotifierDB["_EchoSoundFile"] or 554099
+    local success = pcall(PlaySoundFile, soundID, "Dialog")
+    if not success then
+        print("|cffFF0000PreyNotifier Error:|r Could not play sound. Invalid or restricted Sound ID.")
+    else
+        print("|cff00FF00PreyNotifier:|r Playing Echo test sound: " .. soundID)
+    end
+end)
+
+EchoSoundDefaultBtn:SetScript("OnClick", function()
+    if PreyNotifierDB then PreyNotifierDB["_EchoSoundFile"] = 554099 end
+    EchoSoundInputBox:SetText("554099")
+    print("|cff00FF00PreyNotifier:|r Echo Sound ID reset to default (554099).")
 end)
 
 
@@ -193,7 +407,7 @@ end)
 -- 1.5 SECURE TARGETING BUTTON
 -- ==========================================
 local TargetBtn = CreateFrame("Button", "PreyNotifierTargetBtn", UIParent, "SecureActionButtonTemplate")
-TargetBtn:SetSize(42, 42)
+TargetBtn:SetSize(36, 36)
 TargetBtn:SetPoint("CENTER", 0, -150)
 TargetBtn:SetFrameStrata("HIGH") 
 
@@ -257,7 +471,7 @@ ScrollChild:SetSize(ScrollFrame:GetWidth(), 1)
 ScrollFrame:SetScrollChild(ScrollChild)
 
 local listFrames = {}
-local function UpdateTargetList()
+UpdateTargetList = function()
     for _, row in ipairs(listFrames) do row:Hide() end
     if not PreyNotifierDB then return end
     
@@ -268,23 +482,23 @@ local function UpdateTargetList()
         if not mobName:match("^_") then
             if not listFrames[rowIndex] then
                 local row = CreateFrame("Frame", nil, ScrollChild)
-                row:SetSize(290, 25) 
+                row:SetSize(265, 22) 
                 
                 local txt = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 txt:SetPoint("LEFT", 5, 0)
-                txt:SetWidth(165) 
+                txt:SetWidth(150) 
                 txt:SetWordWrap(false) 
                 txt:SetJustifyH("LEFT") 
                 row.text = txt
                 
                 local delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-                delBtn:SetSize(25, 25)
+                delBtn:SetSize(22, 22)
                 delBtn:SetPoint("RIGHT", 0, 0)
                 delBtn:SetText("X")
                 row.delBtn = delBtn
 
                 local priBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-                priBtn:SetSize(85, 25)
+                priBtn:SetSize(75, 22)
                 priBtn:SetPoint("RIGHT", delBtn, "LEFT", -5, 0)
                 row.priBtn = priBtn
                 
@@ -313,7 +527,7 @@ local function UpdateTargetList()
                 
                 PreyNotifierDB["_PrimaryTarget"] = mobName
                 PreyNotifierTargetBtn:SetAttribute("macrotext1", "/cleartarget\n/targetexact " .. mobName)
-                PreyNotifierTargetBtn:Show()
+                UpdateTargetButton()
                 print("|cff00FF00PreyNotifier:|r Primary Target set to |cffFFFF00" .. mobName .. "|r.")
                 UpdateTargetList() 
             end)
@@ -324,18 +538,18 @@ local function UpdateTargetList()
                     PreyNotifierDB["_PrimaryTarget"] = nil
                     if not InCombatLockdown() then
                         PreyNotifierTargetBtn:SetAttribute("macrotext1", "")
-                        PreyNotifierTargetBtn:Hide()
+                        UpdateTargetButton()
                     else
                         print("|cffFF9900PreyNotifier:|r Primary Target deleted, but button cannot be hidden while in combat.")
                     end
                     -- NEW: Hide the progress bar
-                    if PreyNotifierProgBar then PreyNotifierProgBar:Hide() end 
+                    if CustomTracker then CustomTracker:Hide() end 
                 end
                 UpdateTargetList()
             end)
             
             currentRow:Show()
-            yOffset = yOffset - 30
+            yOffset = yOffset - 25
             rowIndex = rowIndex + 1
         end
     end
@@ -344,7 +558,7 @@ local function UpdateTargetList()
 end
 
 local ClearPriBtn = CreateFrame("Button", nil, PreyListTab, "UIPanelButtonTemplate")
-ClearPriBtn:SetSize(120, 25)
+ClearPriBtn:SetSize(100, 22)
 ClearPriBtn:SetPoint("TOPRIGHT", ScrollFrame, "BOTTOMRIGHT", 0, -10)
 ClearPriBtn:SetText("Clear Primary")
 
@@ -357,9 +571,9 @@ ClearPriBtn:SetScript("OnClick", function()
     if PreyNotifierDB["_PrimaryTarget"] then
         PreyNotifierDB["_PrimaryTarget"] = nil
         PreyNotifierTargetBtn:SetAttribute("macrotext1", "")
-        PreyNotifierTargetBtn:Hide()
+        UpdateTargetButton()
         -- NEW: Hide the progress bar
-        if PreyNotifierProgBar then PreyNotifierProgBar:Hide() end 
+        if CustomTracker then CustomTracker:Hide() end 
         print("|cff00FF00PreyNotifier:|r Primary Target cleared. Button hidden.")
         UpdateTargetList() 
     end
@@ -374,8 +588,23 @@ UIFrame:SetScript("OnShow", function()
     if PreyNotifierDB and PreyNotifierDB["_ShowProgressBar"] ~= nil then
         ShowBarChk:SetChecked(PreyNotifierDB["_ShowProgressBar"])
     end
+    if PreyNotifierDB and PreyNotifierDB["_ShowTargetBtn"] ~= nil then
+        ShowTargetBtnChk:SetChecked(PreyNotifierDB["_ShowTargetBtn"])
+    end
 	if PreyNotifierDB and PreyNotifierDB["_HideBlizzUI"] ~= nil then
         HideBlizzChk:SetChecked(PreyNotifierDB["_HideBlizzUI"])
+    end
+    if PreyNotifierDB and PreyNotifierDB["_PlaySound"] ~= nil then
+        EnableSoundChk:SetChecked(PreyNotifierDB["_PlaySound"])
+    end
+    if PreyNotifierDB and PreyNotifierDB["_SoundFile"] then
+        SoundInputBox:SetText(tostring(PreyNotifierDB["_SoundFile"]))
+    end
+    if PreyNotifierDB and PreyNotifierDB["_PlayEchoSound"] ~= nil then
+        EnableEchoSoundChk:SetChecked(PreyNotifierDB["_PlayEchoSound"])
+    end
+    if PreyNotifierDB and PreyNotifierDB["_EchoSoundFile"] then
+        EchoSoundInputBox:SetText(tostring(PreyNotifierDB["_EchoSoundFile"]))
     end
 end)
 
@@ -390,8 +619,8 @@ AddButton:SetScript("OnClick", function()
     if text and text ~= "" then
         if not text:match("^[%a%s'-]+$") or string.len(text) > 40 then
             print("|cffFF0000PreyNotifier Error:|r Invalid name.")
-            elseif PreyNotifierDB and PreyNotifierDB[text] then
-                print("|cffFF0000PreyNotifier Error:|r |cffFFFF00" .. text .. "|r is already in the hunt list.")
+        elseif PreyNotifierDB and PreyNotifierDB[text] then
+            print("|cffFF0000PreyNotifier Error:|r |cffFFFF00" .. text .. "|r is already in the hunt list.")
         else
             PreyNotifierDB[text] = true
             InputBox:SetText("")
@@ -425,6 +654,7 @@ SlashCmdList["PREY"] = function(msg)
         end
     elseif command == "toggle" then
         isEnabled = not isEnabled
+        if PreyNotifierDB then PreyNotifierDB["_IsEnabled"] = isEnabled end
         if isEnabled then print("|cff00FF00PreyNotifier:|r Tracking Enabled.")
         else print("|cffFF0000PreyNotifier:|r Tracking Disabled.") end
 	elseif command == "timer" then
@@ -473,7 +703,7 @@ MinimapButton:SetFrameStrata("MEDIUM")
 MinimapButton:SetFrameLevel(8)
 
 local iconBg = MinimapButton:CreateTexture(nil, "BACKGROUND")
-iconBg:SetTexture("Interface\\AddOns\\PreyNotifier\\preynotifier_minibutton.png") 
+iconBg:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\preynotifier_minibutton.png") 
 iconBg:SetSize(32, 32) 
 iconBg:SetPoint("CENTER", 1, -2)
 
@@ -544,7 +774,7 @@ end)
 -- DAGGER TRACKER UI SETUP (Standalone & Movable)
 -- ------------------------------------------
 -- Reusing the name "PreyNotifierProgBar" so your saved position still works!
-local CustomTracker = CreateFrame("Frame", "PreyNotifierProgBar", UIParent)
+CustomTracker = CreateFrame("Frame", "PreyNotifierProgBar", UIParent)
 CustomTracker:SetSize(128, 128)
 CustomTracker:SetPoint("TOP", UIParent, "TOP", 0, -100) 
 
@@ -611,17 +841,210 @@ AlphaAnim:SetDuration(1.2)
 GlowPulse:Play()
 
 -- Keep the text below the dagger
+CustomTracker.textBg = CustomTracker:CreateTexture(nil, "BACKGROUND")
+CustomTracker.textBg:SetColorTexture(0, 0, 0, 0.6) -- Semi-transparent black background
+
 CustomTracker.text = CustomTracker:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 CustomTracker.text:SetPoint("TOP", CustomTracker, "BOTTOM", 0, -5)
 CustomTracker.text:SetText("Searching for Prey...")
 
+CustomTracker.textBg:SetPoint("TOPLEFT", CustomTracker.text, "TOPLEFT", -5, 2)
+CustomTracker.textBg:SetPoint("BOTTOMRIGHT", CustomTracker.text, "BOTTOMRIGHT", 5, -2)
+
 CustomTracker:Hide()
 
+-- ------------------------------------------
+-- DEBUFF TRACKING FRAMES
+-- ------------------------------------------
+local BCFrame = CreateFrame("Frame", nil, CustomTracker)
+BCFrame:SetHeight(20)
+BCFrame.bg = BCFrame:CreateTexture(nil, "BACKGROUND")
+BCFrame.bg:SetColorTexture(0, 0, 0, 0.6)
+BCFrame.bg:SetAllPoints()
+
+BCFrame.glow = BCFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+BCFrame.glow:SetPoint("TOPLEFT", -2, 2)
+BCFrame.glow:SetPoint("BOTTOMRIGHT", 2, -2)
+BCFrame.glow:SetColorTexture(1, 0, 0, 1)
+BCFrame.glow:SetBlendMode("ADD")
+BCFrame.glowAnim = BCFrame.glow:CreateAnimationGroup()
+BCFrame.glowAnim:SetLooping("BOUNCE")
+local bcAlphaAnim = BCFrame.glowAnim:CreateAnimation("Alpha")
+bcAlphaAnim:SetFromAlpha(0.2)
+bcAlphaAnim:SetToAlpha(1.0)
+bcAlphaAnim:SetDuration(0.5)
+
+BCFrame:SetScript("OnShow", function(self) self.glowAnim:Play() end)
+BCFrame:SetScript("OnHide", function(self) self.glowAnim:Stop() end)
+
+BCFrame.icon = BCFrame:CreateTexture(nil, "ARTWORK")
+BCFrame.icon:SetSize(14, 14) -- Roughly 50% of a standard debuff icon
+BCFrame.icon:SetPoint("LEFT", 4, 0)
+BCFrame.icon:SetTexture("Interface\\Icons\\ability_blackhand_marked4death")
+
+BCFrame.text = BCFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+BCFrame.text:SetPoint("LEFT", BCFrame.icon, "RIGHT", 4, 0)
+BCFrame:Hide()
+BCFrame.isActive = false
+
+BCFrame:SetScript("OnUpdate", function(self)
+    if self.expirationTime and self.expirationTime > 0 then
+        local timeLeft = self.expirationTime - GetTime()
+        if timeLeft > 0 then
+            self.text:SetText(string.format("Bloody Command: %.1fs", timeLeft))
+        else
+            self.text:SetText("Bloody Command: 0.0s")
+            -- Allow the frame to hide itself if it naturally expires mid-combat
+            if self.isActive and InCombatLockdown() then
+                self.isActive = false
+                self:Hide()
+                UpdateDebuffs()
+            end
+        end
+        self:SetWidth(self.icon:GetWidth() + self.text:GetStringWidth() + 12)
+    end
+end)
+
+local TormentFrame = CreateFrame("Frame", nil, CustomTracker)
+TormentFrame:SetHeight(20)
+TormentFrame.bg = TormentFrame:CreateTexture(nil, "BACKGROUND")
+TormentFrame.bg:SetColorTexture(0, 0, 0, 0.6)
+TormentFrame.bg:SetAllPoints()
+
+TormentFrame.glow = TormentFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+TormentFrame.glow:SetPoint("TOPLEFT", -2, 2)
+TormentFrame.glow:SetPoint("BOTTOMRIGHT", 2, -2)
+TormentFrame.glow:SetColorTexture(1, 0, 0, 1)
+TormentFrame.glow:SetBlendMode("ADD")
+TormentFrame.glow:Hide()
+TormentFrame.glowAnim = TormentFrame.glow:CreateAnimationGroup()
+TormentFrame.glowAnim:SetLooping("BOUNCE")
+local torAlphaAnim = TormentFrame.glowAnim:CreateAnimation("Alpha")
+torAlphaAnim:SetFromAlpha(0.2)
+torAlphaAnim:SetToAlpha(1.0)
+torAlphaAnim:SetDuration(0.5)
+
+TormentFrame:SetScript("OnShow", function(self) self.glowAnim:Play() end)
+TormentFrame:SetScript("OnHide", function(self) self.glowAnim:Stop() end)
+
+TormentFrame.icon = TormentFrame:CreateTexture(nil, "ARTWORK")
+TormentFrame.icon:SetSize(14, 14)
+TormentFrame.icon:SetPoint("LEFT", 4, 0)
+
+TormentFrame.text = TormentFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+TormentFrame.text:SetPoint("LEFT", TormentFrame.icon, "RIGHT", 4, 0)
+TormentFrame:Hide()
+
+TormentFrame.lastTickTime = 0
+TormentFrame.predictedStacks = 0
+
+function TormentFrame:UpdateDisplay(stacks)
+    local percent = stacks * 4
+    self.text:SetText("Torment: " .. stacks .. "x | " .. percent .. "%")
+    if stacks >= 8 then
+        self.glow:Show()
+    else
+        self.glow:Hide()
+    end
+    self:SetWidth(self.icon:GetWidth() + self.text:GetStringWidth() + 12)
+end
+
+TormentFrame:SetScript("OnUpdate", function(self)
+    if InCombatLockdown() and self.lastTickTime > 0 then
+        if GetTime() - self.lastTickTime >= 60 then
+            self.lastTickTime = self.lastTickTime + 60
+            self.predictedStacks = self.predictedStacks + 1
+            self:UpdateDisplay(self.predictedStacks)
+        end
+    end
+end)
+
+local function FindPlayerDebuff(spellName)
+    if not C_UnitAuras then return nil end
+    local i = 1
+    while true do
+        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HARMFUL")
+        if not aura then break end
+        
+        -- Use pcall to safely compare the name, avoiding crashes from Blizzard's "Secret/Private" auras
+        local success, isMatch = pcall(function() return aura.name == spellName end)
+        if success and isMatch then
+            return aura
+        end
+        i = i + 1
+    end
+    return nil
+end
+
+UpdateDebuffs = function()
+    if not IsInHuntZone() or not CustomTracker:IsShown() then
+        BCFrame.isActive = false
+        BCFrame:Hide()
+        TormentFrame:Hide()
+        return
+    end
+
+    -- Bloody Command Check
+    local bcAura = FindPlayerDebuff("Bloody Command")
+    if bcAura then
+        BCFrame.expirationTime = bcAura.expirationTime
+        if not BCFrame.isActive then
+            BCFrame.isActive = true
+            print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied!|r")
+            BCFrame:Show()
+        end
+    else
+        if not InCombatLockdown() then
+            BCFrame.isActive = false
+            BCFrame:Hide()
+        end
+    end
+
+    -- Torment Check
+    local tormentAura = FindPlayerDebuff("Torment")
+    if tormentAura then
+        TormentFrame.icon:SetTexture(tormentAura.icon)
+        local stacks = (tormentAura.applications and tormentAura.applications > 0) and tormentAura.applications or 1
+        
+        -- Sync base time if stacks change unpredictably or first application
+        if TormentFrame.lastTickTime == 0 or stacks ~= TormentFrame.predictedStacks then
+            TormentFrame.lastTickTime = GetTime()
+            TormentFrame.predictedStacks = stacks
+        end
+        
+        TormentFrame:UpdateDisplay(stacks)
+        TormentFrame:Show()
+    else
+        if not InCombatLockdown() then
+            TormentFrame:Hide()
+            TormentFrame.glow:Hide()
+            TormentFrame.lastTickTime = 0
+            TormentFrame.predictedStacks = 0
+        end
+    end
+
+    -- Dynamic Stacking Layout
+    BCFrame:ClearAllPoints()
+    TormentFrame:ClearAllPoints()
+
+    if BCFrame:IsShown() then
+        BCFrame:SetPoint("TOP", CustomTracker.text, "BOTTOM", 0, -5)
+        if TormentFrame:IsShown() then
+            TormentFrame:SetPoint("TOP", BCFrame, "BOTTOM", 0, -2)
+        end
+    elseif TormentFrame:IsShown() then
+        TormentFrame:SetPoint("TOP", CustomTracker.text, "BOTTOM", 0, -5)
+    end
+    
+    if TormentFrame:IsShown() then
+        TormentFrame:SetWidth(TormentFrame.icon:GetWidth() + TormentFrame.text:GetStringWidth() + 12)
+    end
+end
 
 -- ------------------------------------------
 -- DYNAMIC WIDGET SCANNER
 -- ------------------------------------------
-function UpdateProgressBar() 
+UpdateProgressBar = function() 
     -- ZONE KILL SWITCH: Sleep if we aren't in a hunting ground
     if not IsInHuntZone() then
         if CustomTracker then CustomTracker:Hide() end
@@ -767,6 +1190,8 @@ function UpdateProgressBar()
     if not foundWidget then
         CustomTracker:Hide()
     end
+    
+    UpdateDebuffs()
 end
 
 
@@ -780,11 +1205,13 @@ PreyAddon:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 PreyAddon:RegisterEvent("PLAYER_TARGET_CHANGED")
 PreyAddon:RegisterEvent("QUEST_ACCEPTED")
 PreyAddon:RegisterEvent("UPDATE_UI_WIDGET") 
-PreyAddon:RegisterEvent("UPDATE_ALL_UI_WIDGETS") 
 PreyAddon:RegisterEvent("QUEST_REMOVED")
 PreyAddon:RegisterEvent("PLAYER_ENTERING_WORLD")
 PreyAddon:RegisterEvent("PLAYER_REGEN_DISABLED")
 PreyAddon:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+PreyAddon:RegisterEvent("UNIT_AURA")
+PreyAddon:RegisterEvent("CHAT_MSG_MONSTER_YELL")
+PreyAddon:RegisterEvent("CHAT_MSG_MONSTER_SAY")
 
 local function ScanQuestLogForPrey()
     if not PreyNotifierDB then return end
@@ -792,12 +1219,16 @@ local function ScanQuestLogForPrey()
     local currentPrimary = PreyNotifierDB["_PrimaryTarget"]
     local foundCurrentPrimary = false
     local firstFoundPrey = nil
+    local isNightmare = false
     
     local numEntries = C_QuestLog.GetNumQuestLogEntries()
     for i = 1, numEntries do
         local info = C_QuestLog.GetInfo(i)
         if info and not info.isHeader and info.questID then
             if info.title and info.title:match("^Prey:") then
+                if info.title:match("%(Nightmare%)") then
+                    isNightmare = true
+                end
                 local mobName = info.title:match("^Prey:%s+(.-)%s+%([^)]+%)$")
                 
                 if mobName then
@@ -817,12 +1248,14 @@ local function ScanQuestLogForPrey()
         currentPrimary = nil
         if not InCombatLockdown() then
             PreyNotifierTargetBtn:SetAttribute("macrotext1", "")
-            PreyNotifierTargetBtn:Hide()
+            UpdateTargetButton()
         end
-        if PreyNotifierProgBar then PreyNotifierProgBar:Hide() end
+        if CustomTracker then CustomTracker:Hide() end
         print("|cffFF9900PreyNotifier:|r Offline completion detected. Cleared missing Primary Target.")
         if UIFrame and UIFrame:IsShown() then UpdateTargetList() end
     end
+
+    PreyNotifierDB["_IsNightmare"] = isNightmare
 
     -- Setup target if we found one
     local targetToSet = currentPrimary or firstFoundPrey
@@ -836,7 +1269,7 @@ local function ScanQuestLogForPrey()
             if not InCombatLockdown() then
                 PreyNotifierDB["_PrimaryTarget"] = targetToSet
                 PreyNotifierTargetBtn:SetAttribute("macrotext1", "/cleartarget\n/target " .. targetToSet)
-                PreyNotifierTargetBtn:Show()
+                UpdateTargetButton()
                 print("|cff00FF00PreyNotifier:|r Auto-detected hunt! Primary Target set to |cffFFFF00" .. targetToSet .. "|r.")
             else
                 print("|cffFF9900PreyNotifier:|r Hunt picked up, but cannot auto-set Primary Target while in combat.")
@@ -844,7 +1277,7 @@ local function ScanQuestLogForPrey()
         else
             if not InCombatLockdown() then
                 PreyNotifierTargetBtn:SetAttribute("macrotext1", "/cleartarget\n/target " .. targetToSet)
-                PreyNotifierTargetBtn:Show()
+                UpdateTargetButton()
             end
         end
         
@@ -861,11 +1294,37 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "PLAYER_ENTERING_WORLD" then
         ScanQuestLogForPrey()
         UpdateProgressBar()
+        UpdateTargetButton()
         return
     end
 	-- WAKE UP / SLEEP WHEN CHANGING ZONES
     if event == "ZONE_CHANGED_NEW_AREA" then
         UpdateProgressBar()
+        UpdateTargetButton()
+        return
+    end
+	-- DEBUFF TRACKER
+    if event == "UNIT_AURA" and arg1 == "player" then
+        UpdateDebuffs()
+        return
+    end
+    -- BLOODY COMMAND CHAT TRACKER
+    if event == "CHAT_MSG_MONSTER_YELL" or event == "CHAT_MSG_MONSTER_SAY" then
+        if not IsInHuntZone() or not CustomTracker:IsShown() then return end
+        
+        local msg = arg1
+        local sender = arg2
+        if sender and sender:match("Astalor Bloodsworn") then
+            if msg and (msg:match("Kill for me. Now!") or msg:match("Drain their anguish!")) then
+                BCFrame.expirationTime = GetTime() + 20
+                if not BCFrame.isActive then
+                    BCFrame.isActive = true
+                    print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied (Chat Detected)!|r")
+                    BCFrame:Show()
+                end
+                UpdateDebuffs()
+            end
+        end
         return
     end
 	-- AUTO-HIDE MENU IN COMBAT
@@ -873,6 +1332,11 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         if UIFrame and UIFrame:IsShown() then
             UIFrame:Hide()
             print("|cffFF9900PreyNotifier:|r Entering combat! Hiding menu.")
+        end
+        
+        -- Prevent the predictive timer from fast-forwarding if you paused in a rested area
+        if TormentFrame:IsShown() then
+            TormentFrame.lastTickTime = GetTime()
         end
         return
     end
@@ -882,9 +1346,28 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
             PreyNotifierDB = { ["_Cooldown"] = 45, ["_MinimapAngle"] = math.rad(225) }
         end
         
+        if PreyNotifierDB["_IsEnabled"] ~= nil then
+            isEnabled = PreyNotifierDB["_IsEnabled"]
+        end
+        
         -- Initialize checkbox state
         if PreyNotifierDB["_ShowProgressBar"] == nil then 
             PreyNotifierDB["_ShowProgressBar"] = true 
+        end
+        if PreyNotifierDB["_ShowTargetBtn"] == nil then
+            PreyNotifierDB["_ShowTargetBtn"] = true
+        end
+        if PreyNotifierDB["_PlaySound"] == nil then
+            PreyNotifierDB["_PlaySound"] = true
+        end
+        if PreyNotifierDB["_SoundFile"] == nil then
+            PreyNotifierDB["_SoundFile"] = 552035
+        end
+        if PreyNotifierDB["_PlayEchoSound"] == nil then
+            PreyNotifierDB["_PlayEchoSound"] = true
+        end
+        if PreyNotifierDB["_EchoSoundFile"] == nil then
+            PreyNotifierDB["_EchoSoundFile"] = 554099
         end
         
         UpdatePosition(PreyNotifierDB["_MinimapAngle"] or math.rad(225))
@@ -903,7 +1386,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
             
             if PreyNotifierDB["_PrimaryTarget"] then
                 PreyNotifierTargetBtn:SetAttribute("macrotext1", "/cleartarget\n/target " .. PreyNotifierDB["_PrimaryTarget"])
-                PreyNotifierTargetBtn:Show()
+                UpdateTargetButton()
             end
             if PreyNotifierDB["_BtnPoint"] then
                 PreyNotifierTargetBtn:ClearAllPoints()
@@ -914,7 +1397,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     end
 
     -- PROGRESS BAR UPDATE LOGIC
-    if event == "UPDATE_UI_WIDGET" or event == "UPDATE_ALL_UI_WIDGETS" then
+    if event == "UPDATE_UI_WIDGET" then
         UpdateProgressBar()
         return
     end
@@ -925,6 +1408,9 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         local questName = C_QuestLog.GetTitleForQuestID(questId)
         
         if questName then
+            if questName:match("^Prey:") and questName:match("%(Nightmare%)") then
+                if PreyNotifierDB then PreyNotifierDB["_IsNightmare"] = true end
+            end
             local mobName = questName:match("^Prey:%s+(.-)%s+%([^)]+%)$")
             
             if mobName then
@@ -937,7 +1423,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
                     if not InCombatLockdown() then
                         PreyNotifierDB["_PrimaryTarget"] = mobName
                         PreyNotifierTargetBtn:SetAttribute("macrotext1", "/cleartarget\n/target " .. mobName)
-                        PreyNotifierTargetBtn:Show()
+                        UpdateTargetButton()
                         print("|cff00FF00PreyNotifier:|r Auto-detected hunt! Primary Target set to |cffFFFF00" .. mobName .. "|r.")
                     else
                         print("|cffFF9900PreyNotifier:|r Hunt picked up, but cannot auto-set Primary Target while in combat.")
@@ -945,7 +1431,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
                 else
                     if not InCombatLockdown() then
                         PreyNotifierTargetBtn:SetAttribute("macrotext1", "/cleartarget\n/target " .. mobName)
-                        PreyNotifierTargetBtn:Show()
+                        UpdateTargetButton()
                     end
                 end
                 
@@ -963,31 +1449,31 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
             local targetName = PreyNotifierDB["_PrimaryTarget"]
             local numEntries = C_QuestLog.GetNumQuestLogEntries()
             local found = false
+            local foundNightmare = false
             
             for i = 1, numEntries do
                 local info = C_QuestLog.GetInfo(i)
                 if info and not info.isHeader and info.questID then
                     if info.title and info.title:match("^Prey:") then
+                        if info.title:match("%(Nightmare%)") then foundNightmare = true end
                         local mobName = info.title:match("^Prey:%s+(.-)%s+%([^)]+%)$")
                         
                         if mobName == targetName then
                             found = true
-                            break
                         end
                     end
                 end
             end
+            if PreyNotifierDB then PreyNotifierDB["_IsNightmare"] = foundNightmare end
             
             -- If the tracked prey is no longer in the quest log, clear the tracker!
             if not found then
                 PreyNotifierDB["_PrimaryTarget"] = nil
                 if not InCombatLockdown() then
                     PreyNotifierTargetBtn:SetAttribute("macrotext1", "")
-                    PreyNotifierTargetBtn:Hide()
+                    UpdateTargetButton()
                 end
-                if PreyNotifierProgBar then
-                    PreyNotifierProgBar:Hide()
-                end
+                if CustomTracker then CustomTracker:Hide() end
                 print("|cffFF9900PreyNotifier:|r Quest removed. Primary Target tracking cleared.")
                 if UIFrame and UIFrame:IsShown() then
                     UpdateTargetList()
@@ -1011,12 +1497,38 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     if type(mobName) ~= "string" then return end    
     if not mobName then return end 
     
+    -- ECHO OF PREDATION TRACKING
+    if mobName == "Echo of Predation" and PreyNotifierDB and PreyNotifierDB["_IsNightmare"] and IsInHuntZone() then
+        local currentTime = GetTime()
+        if (currentTime - lastEchoAlertTime) >= (PreyNotifierDB["_Cooldown"] or 45) then
+            lastEchoAlertTime = currentTime 
+            
+            if PreyNotifierDB["_PlayEchoSound"] ~= false then
+                local soundID = PreyNotifierDB["_EchoSoundFile"] or 554099
+                local success = pcall(PlaySoundFile, soundID, "Dialog")
+                if not success then
+                    print("|cffFF0000PreyNotifier Error:|r Failed to play Echo alert sound. Check sound ID.")
+                end
+            end
+
+            RaidNotice_AddMessage(RaidWarningFrame, "ECHO OF PREDATION DETECTED! INTERRUPT ITS CAST!", ChatTypeInfo["RAID_WARNING"])
+            print("|cffFF0000PreyNotifier: WARNING: Echo of Predation Detected! Interrupt its cast!|r")
+        end
+    end
+    
     if PreyNotifierDB and PreyNotifierDB[mobName] then
         local currentTime = GetTime()
         if (currentTime - lastAlertTime) >= (PreyNotifierDB["_Cooldown"] or 45) then
             lastAlertTime = currentTime 
             
-            pcall(PlaySoundFile, 552035, "Dialog")
+            if PreyNotifierDB["_PlaySound"] ~= false then
+                local soundID = PreyNotifierDB["_SoundFile"] or 552035
+                local success = pcall(PlaySoundFile, soundID, "Dialog")
+                if not success then
+                    print("|cffFF0000PreyNotifier Error:|r Failed to play ambush alert sound. Check sound ID.")
+                end
+            end
+
             RaidNotice_AddMessage(RaidWarningFrame, "PREY AMBUSH: " .. string.upper(mobName) .. "!", ChatTypeInfo["RAID_WARNING"])
             print("|cffFF0000PreyNotifier: WARNING: Ambush Detected!|r")
         end
@@ -1024,100 +1536,6 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
 end)
 
 
-
--- ==========================================
--- LOGGING FIREHOSE SNIFFER (/pns)
--- ==========================================
-local SnifferFrame = CreateFrame("Frame")
-local isSniffing = false
-
--- The Spam Filter
-local ignoredEvents = {
-    ["COMBAT_LOG_EVENT_UNFILTERED"] = true,
-    ["WORLD_CURSOR_TOOLTIP_UPDATE"] = true,
-    ["UPDATE_MOUSEOVER_UNIT"] = true,
-    ["UNIT_AURA"] = true,
-    ["UNIT_POWER_UPDATE"] = true,
-    ["UNIT_HEALTH"] = true,
-    ["SPELL_UPDATE_COOLDOWN"] = true,
-    ["ACTIONBAR_UPDATE_COOLDOWN"] = true,
-    ["BAG_UPDATE"] = true,
-    ["BAG_UPDATE_COOLDOWN"] = true,
-    ["PLAYER_STARTED_MOVING"] = true,
-    ["PLAYER_STOPPED_MOVING"] = true,
-    ["CURSOR_CHANGED"] = true,
-    ["MODIFIER_STATE_CHANGED"] = true,
-    ["UPDATE_UI_WIDGET"] = true,
-    ["UPDATE_ALL_UI_WIDGETS"] = true,
-}
-
-SnifferFrame:SetScript("OnEvent", function(self, event, ...)
-    if not isSniffing then return end
-    if ignoredEvents[event] then return end 
-    
-    local args = {...}
-    local output = ""
-    
-    for i, arg in ipairs(args) do
-        output = output .. " [Arg" .. i .. ": " .. tostring(arg) .. "]"
-    end
-    
-    local logString = GetTime() .. " | " .. event .. output
-    
-    -- Print to chat so you know it's working
-    print("|cffFF9900[Sniff]|r " .. event)
-    
-    -- BUT ALSO: Save it to our database!
-    if PreyNotifierDB then
-        table.insert(PreyNotifierDB["_DebugLog"], logString)
-    end
-end)
-
-local function ToggleSniffer()
-    isSniffing = not isSniffing
-    if isSniffing then
-        -- Wipe the old log clean every time we turn it on so the file doesn't get to be 500MB
-        if PreyNotifierDB then
-            PreyNotifierDB["_DebugLog"] = {} 
-        end
-        SnifferFrame:RegisterAllEvents() 
-        print("|cff00FF00PreyNotifier:|r LOGGING FIREHOSE ENABLED. Trigger the text, then type /pns to stop.")
-    else
-        SnifferFrame:UnregisterAllEvents()
-        print("|cffFF0000PreyNotifier:|r LOGGING FIREHOSE DISABLED. Type /reload to write the log file to your hard drive.")
-    end
-end
-
-SLASH_PREYSNIFF1 = "/pns"
-SlashCmdList["PREYSNIFF"] = ToggleSniffer
-
--- ==========================================
--- SURGICAL CRITERIA SNIFFER (/pnc)
--- ==========================================
-local CriteriaSniffer = CreateFrame("Frame")
-local isSniffingCriteria = false
-
-CriteriaSniffer:SetScript("OnEvent", function(self, event, ...)
-    -- Only print when our specific event fires
-    if isSniffingCriteria and event == "CRITERIA_UPDATE" then
-        print("|cff00FF00[PreyBullseye]|r CRITERIA_UPDATE detected!")
-    end
-end)
-
-local function ToggleCriteriaSniffer()
-    isSniffingCriteria = not isSniffingCriteria
-    if isSniffingCriteria then
-        CriteriaSniffer:RegisterEvent("CRITERIA_UPDATE")
-        print("|cff00FFFFPreyNotifier:|r Surgical Sniffer ENABLED. Watching only for CRITERIA_UPDATE...")
-    else
-        CriteriaSniffer:UnregisterAllEvents()
-        print("|cffFF0000PreyNotifier:|r Surgical Sniffer DISABLED.")
-    end
-end
-
--- New command: /pnc (PreyNotifier Criteria)
-SLASH_PREYCRITERIA1 = "/pnc"
-SlashCmdList["PREYCRITERIA"] = ToggleCriteriaSniffer
 
 -- ==========================================
 -- WIDGET DEBUGGER (/pnwidget)
@@ -1145,62 +1563,5 @@ SlashCmdList["PREYWIDGET"] = function()
     end
     if not found then
         print("|cffFF0000[PreyNotifier Widget]|r Could not find active Widget ID 31.")
-    end
-end
-
--- ==========================================
--- EXPERIMENTAL PROGRESS SNIFFER (/pnp)
--- ==========================================
-local ProgressSniffer = CreateFrame("Frame")
-local isSniffingProgress = false
-
-ProgressSniffer:SetScript("OnEvent", function(self, event, ...)
-    if not isSniffingProgress then return end
-    
-    local args = {...}
-    local argStr = ""
-    for i, v in ipairs(args) do
-        argStr = argStr .. tostring(v) .. (i < #args and ", " or "")
-    end
-    
-    print("|cff00FFFFPrey Update Detected.|r |cffFFFF00API Fired:|r " .. event .. " | |cff00FF00Value(s):|r " .. (argStr ~= "" and argStr or "None"))
-    
-    -- If the quest log updates, let's actively peek at the hidden objectives of our Prey quest
-    if (event == "QUEST_LOG_UPDATE" or event == "QUEST_WATCH_UPDATE" or event == "UNIT_QUEST_LOG_CHANGED") and PreyNotifierDB and PreyNotifierDB["_PrimaryTarget"] then
-        local numEntries = C_QuestLog.GetNumQuestLogEntries()
-        for i = 1, numEntries do
-            local info = C_QuestLog.GetInfo(i)
-            if info and not info.isHeader and info.questID then
-                if info.title and info.title:match("^Prey:%s+(.-)%s+%([^)]+%)$") then
-                    local objectives = C_QuestLog.GetQuestObjectives(info.questID)
-                    if objectives then
-                        for objIndex, obj in ipairs(objectives) do
-                            -- obj.numFulfilled and obj.numRequired often hold the raw point values
-                            print("   -> |cffCCCCCCObjective " .. objIndex .. ":|r " .. tostring(obj.text) .. " | |cff00FF00Progress: " .. tostring(obj.numFulfilled) .. "/" .. tostring(obj.numRequired) .. "|r")
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
-SLASH_PREYPROGRESS1 = "/pnp"
-SLASH_PREYPROGRESS2 = "/pnprogress"
-SlashCmdList["PREYPROGRESS"] = function()
-    isSniffingProgress = not isSniffingProgress
-    if isSniffingProgress then
-        ProgressSniffer:RegisterEvent("SCENARIO_UPDATE")
-        ProgressSniffer:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
-        ProgressSniffer:RegisterEvent("QUEST_WATCH_UPDATE")
-        ProgressSniffer:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
-        ProgressSniffer:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
-        ProgressSniffer:RegisterEvent("CHAT_MSG_CURRENCY")
-        ProgressSniffer:RegisterEvent("QUEST_LOG_UPDATE")
-        ProgressSniffer:RegisterEvent("UI_INFO_MESSAGE")
-        print("|cff00FF00PreyNotifier:|r Progress Sniffer ENABLED. Type /pnp to disable.")
-    else
-        ProgressSniffer:UnregisterAllEvents()
-        print("|cffFF0000PreyNotifier:|r Progress Sniffer DISABLED.")
     end
 end
