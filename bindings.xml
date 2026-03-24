@@ -1,6 +1,10 @@
 <Bindings>
     <Binding name="CLICK PreyNotifierTargetBtn:LeftButton" category="PreyNotifier">
+    <Binding name="CLICK PreyNotifierTargetBtn:LeftButton" header="PREYNOTIFIER" category="PreyNotifier">
+    <Binding name="CLICK PreyNotifierTargetBtn:LeftButton" header="PREYNOTIFIER" category="PreyNotifier">
     </Binding>
     <Binding name="CLICK PreyNotifierTargetBtn:MiddleButton" category="PreyNotifier">
+    </Binding>
+    <Binding name="CLICK PreyNotifierEchoBtn:LeftButton" category="PreyNotifier">
     </Binding>
 </Bindings>
