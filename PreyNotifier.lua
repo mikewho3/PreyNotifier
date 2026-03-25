@@ -1373,13 +1373,7 @@ function TormentFrame:UpdateDisplay(stacks)
     if isNightmare and stacks >= tRed then
         if self.lastWarnedStack ~= stacks then
             self.lastWarnedStack = stacks
-            local iconTex = self.icon:GetTexture()
-            local iconStr = iconTex and ("|T" .. tostring(iconTex) .. ":16|t") or ""
             print("|cffFF0000PreyNotifier: Warning:|r " .. iconStr .. "Torment at |cffFFFF00" .. stacks .. " stacks|r. Taking |cffFF0000" .. percent .. "%|r increased damage from all sources.")
-            if showDebuffs then
-                local iconTex = self.icon:GetTexture()
-                local iconStr = iconTex and ("|T" .. tostring(iconTex) .. ":16|t") or ""
-                print("|cffFF0000PreyNotifier: Warning:|r " .. iconStr .. "Torment at |cffFFFF00" .. stacks .. " stacks|r. Taking |cffFF0000" .. percent .. "%|r increased damage from all sources.")
             end
         end
     else
@@ -1432,14 +1426,10 @@ UpdateDebuffs = function()
         BCFrame.expirationTime = bcAura.expirationTime
         if not BCFrame.isActive then
             BCFrame.isActive = true
-            print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied!|r")
-            BCFrame:Show()
             if showDebuffs then
                 print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied!|r")
             end
-        end
-    else
-        if not InCombatLockdown() then
+        end InCombatLockdown() then
             BCFrame.isActive = false
             BCFrame:Hide()
         end
@@ -1788,15 +1778,11 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
                 BCFrame.expirationTime = GetTime() + 20
                 if not BCFrame.isActive then
                     BCFrame.isActive = true
-                    print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied (Chat Detected)!|r")
-                    BCFrame:Show()
                     if PreyNotifierDB and PreyNotifierDB["_TrackDebuffs"] ~= false then
                         print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied (Chat Detected)!|r")
                     end
                 end
                 UpdateDebuffs()
-            end
-        end
         return
     end
 	-- AUTO-HIDE MENU IN COMBAT
