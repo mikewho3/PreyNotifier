@@ -1983,7 +1983,6 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
 	
     -- AMBUSH TRACKING LOGIC
     if not isEnabled then return end
-    if isHuntComplete then return end
     
     local inInstance, instanceType = IsInInstance()
     if inInstance then return end
@@ -2017,7 +2016,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
     end
     
-    if PreyNotifierDB and PreyNotifierDB[mobName] then
+    if not isHuntComplete and PreyNotifierDB and PreyNotifierDB[mobName] then
         local currentTime = GetTime()
         if (currentTime - lastAlertTime) >= (PreyNotifierDB["_Cooldown"] or 45) then
             lastAlertTime = currentTime 
