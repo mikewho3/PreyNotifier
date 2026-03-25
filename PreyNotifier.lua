@@ -3,6 +3,8 @@ local isEnabled = true
 local lastAlertTime = 0 
 local lastEchoAlertTime = 0
 local isHuntComplete = false
+local isFlashSuppressed = false
+local defaultScreenFlash = "1"
 
 -- Forward Declarations
 local UpdateTargetList
@@ -324,12 +326,32 @@ TrackDebuffsChk:SetScript("OnClick", function(self)
     UpdateDebuffs()
 end)
 
+local DisableBCFlashChk = CreateFrame("CheckButton", "PreyNotifierDisableBCFlashChk", OptionsTab, "UICheckButtonTemplate")
+DisableBCFlashChk:SetSize(24, 24)
+DisableBCFlashChk:SetPoint("TOPLEFT", TrackDebuffsChk, "BOTTOMLEFT", 0, -25)
+DisableBCFlashChk.text = DisableBCFlashChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+DisableBCFlashChk.text:SetPoint("LEFT", DisableBCFlashChk, "RIGHT", 5, 0)
+DisableBCFlashChk.text:SetText("Disable Bloody Command Screen Flash")
+
+local DisableBCFlashSubtext = DisableBCFlashChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+DisableBCFlashSubtext:SetPoint("TOPLEFT", DisableBCFlashChk, "BOTTOMLEFT", 5, -2) 
+DisableBCFlashSubtext:SetText("Disables the pulsing red screen border when debuffed.")
+DisableBCFlashSubtext:SetTextColor(0.65, 0.55, 0.15) 
+
+DisableBCFlashChk:SetScript("OnClick", function(self)
+    if PreyNotifierDB then
+        PreyNotifierDB["_DisableBCFlash"] = self:GetChecked()
+    end
+    UpdateDebuffs()
+end)
+
 -- ------------------------------------------
 -- TORMENT THRESHOLD SETTINGS
 -- ------------------------------------------
 local TormentHeader = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 TormentHeader:SetPoint("TOPLEFT", RaidWarnChk, "BOTTOMLEFT", 0, -15)
 TormentHeader:SetPoint("TOPLEFT", TrackDebuffsChk, "BOTTOMLEFT", 0, -15)
+TormentHeader:SetPoint("TOPLEFT", DisableBCFlashSubtext, "BOTTOMLEFT", -5, -15)
 TormentHeader:SetText("Torment Warning Thresholds")
 
 local YellowWarnLabel = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -970,6 +992,9 @@ UIFrame:SetScript("OnShow", function()
     if PreyNotifierDB and PreyNotifierDB["_TrackDebuffs"] ~= nil then
         TrackDebuffsChk:SetChecked(PreyNotifierDB["_TrackDebuffs"])
     end
+    if PreyNotifierDB and PreyNotifierDB["_DisableBCFlash"] ~= nil then
+        DisableBCFlashChk:SetChecked(PreyNotifierDB["_DisableBCFlash"])
+    end
     if PreyNotifierDB and PreyNotifierDB["_PlaySound"] ~= nil then
         EnableSoundChk:SetChecked(PreyNotifierDB["_PlaySound"])
     end
@@ -1374,6 +1399,10 @@ function TormentFrame:UpdateDisplay(stacks)
         if self.lastWarnedStack ~= stacks then
             self.lastWarnedStack = stacks
             print("|cffFF0000PreyNotifier: Warning:|r " .. iconStr .. "Torment at |cffFFFF00" .. stacks .. " stacks|r. Taking |cffFF0000" .. percent .. "%|r increased damage from all sources.")
+            if showDebuffs then
+                local iconTex = self.icon:GetTexture()
+                local iconStr = iconTex and ("|T" .. tostring(iconTex) .. ":16|t") or ""
+                print("|cffFF0000PreyNotifier: Warning:|r " .. iconStr .. "Torment at |cffFFFF00" .. stacks .. " stacks|r. Taking |cffFF0000" .. percent .. "%|r increased damage from all sources.")
             end
         end
     else
@@ -1412,6 +1441,11 @@ end
 
 UpdateDebuffs = function()
     if not IsInHuntZone() or not CustomTracker:IsShown() then
+        if isFlashSuppressed then
+            SetCVar("screenEdgeFlash", defaultScreenFlash)
+            if FullScreenStatus then FullScreenStatus:SetAlpha(1) end
+            isFlashSuppressed = false
+        end
         BCFrame.isActive = false
         BCFrame:Hide()
         TormentFrame:Hide()
@@ -1429,15 +1463,40 @@ UpdateDebuffs = function()
             if showDebuffs then
                 print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied!|r")
             end
-        end InCombatLockdown() then
+        end
+    else
+        if not InCombatLockdown() then
             BCFrame.isActive = false
-            BCFrame:Hide()
         end
     end
     
-    if BCFrame.isActive and showDebuffs then
-        BCFrame:Show()
+    if BCFrame.isActive then
+        if PreyNotifierDB and PreyNotifierDB["_DisableBCFlash"] then
+            if not isFlashSuppressed then
+                defaultScreenFlash = GetCVar("screenEdgeFlash") or "1"
+                SetCVar("screenEdgeFlash", "0")
+                if FullScreenStatus then FullScreenStatus:SetAlpha(0) end
+                isFlashSuppressed = true
+            end
+        else
+            if isFlashSuppressed then
+                SetCVar("screenEdgeFlash", defaultScreenFlash)
+                if FullScreenStatus then FullScreenStatus:SetAlpha(1) end
+                isFlashSuppressed = false
+            end
+        end
+        
+        if showDebuffs then
+            BCFrame:Show()
+        else
+            BCFrame:Hide()
+        end
     else
+        if isFlashSuppressed then
+            SetCVar("screenEdgeFlash", defaultScreenFlash)
+            if FullScreenStatus then FullScreenStatus:SetAlpha(1) end
+            isFlashSuppressed = false
+        end
         BCFrame:Hide()
     end
 
@@ -1666,6 +1725,7 @@ PreyAddon:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 PreyAddon:RegisterEvent("UNIT_AURA")
 PreyAddon:RegisterEvent("CHAT_MSG_MONSTER_YELL")
 PreyAddon:RegisterEvent("CHAT_MSG_MONSTER_SAY")
+PreyAddon:RegisterEvent("PLAYER_LOGOUT")
 
 local function ScanQuestLogForPrey()
     if not PreyNotifierDB then return end
@@ -1783,6 +1843,8 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
                     end
                 end
                 UpdateDebuffs()
+            end
+        end
         return
     end
 	-- AUTO-HIDE MENU IN COMBAT
@@ -1798,6 +1860,13 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         -- Prevent the predictive timer from fast-forwarding if you paused in a rested area
         if TormentFrame:IsShown() then
             TormentFrame.lastTickTime = GetTime()
+        end
+        return
+    end
+
+    if event == "PLAYER_LOGOUT" then
+        if isFlashSuppressed then
+            SetCVar("screenEdgeFlash", defaultScreenFlash)
         end
         return
     end
@@ -1840,6 +1909,9 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         if PreyNotifierDB["_TrackDebuffs"] == nil then
             PreyNotifierDB["_TrackDebuffs"] = true
+        end
+        if PreyNotifierDB["_DisableBCFlash"] == nil then
+            PreyNotifierDB["_DisableBCFlash"] = false
         end
         if PreyNotifierDB["_EchoSoundFile"] == nil then
             PreyNotifierDB["_EchoSoundFile"] = 554099
