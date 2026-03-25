@@ -1999,6 +1999,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     if mobName == "Echo of Predation" and PreyNotifierDB and PreyNotifierDB["_IsNightmare"] and IsInHuntZone() then
         local currentTime = GetTime()
         if (currentTime - lastEchoAlertTime) >= (PreyNotifierDB["_Cooldown"] or 45) then
+        if (currentTime - lastEchoAlertTime) >= 15 then
             lastEchoAlertTime = currentTime 
             
             if PreyNotifierDB["_PlayEchoSound"] ~= false then
