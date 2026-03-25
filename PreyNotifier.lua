@@ -2101,7 +2101,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
             print("|cffFF0000PreyNotifier: WARNING: Ambush Detected!|r")
         end
     end
-end
+end)
 
 
 
