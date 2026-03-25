@@ -2056,6 +2056,9 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     -- AMBUSH TRACKING LOGIC
     if not isEnabled then return end
     
+    -- Optimization & Safety: Only scan targets/nameplates if we are in a valid hunt zone
+    if not IsInHuntZone() then return end
+    
     local inInstance, instanceType = IsInInstance()
     if inInstance then return end
     
@@ -2066,6 +2069,10 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     local mobName = UnitName(currentUnit)
     if type(mobName) ~= "string" then return end    
     if not mobName then return end 
+    
+    -- SAFETY CHECK: Prevent errors from Blizzard's restricted "secret" nameplate strings in protected areas
+    local isSafeString = pcall(function() return mobName == "" end)
+    if not isSafeString then return end
     
     -- ECHO OF PREDATION TRACKING
     if mobName == "Echo of Predation" and PreyNotifierDB and PreyNotifierDB["_IsNightmare"] and IsInHuntZone() then
