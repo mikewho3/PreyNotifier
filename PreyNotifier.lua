@@ -349,8 +349,6 @@ end)
 -- TORMENT THRESHOLD SETTINGS
 -- ------------------------------------------
 local TormentHeader = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-TormentHeader:SetPoint("TOPLEFT", RaidWarnChk, "BOTTOMLEFT", 0, -15)
-TormentHeader:SetPoint("TOPLEFT", TrackDebuffsChk, "BOTTOMLEFT", 0, -15)
 TormentHeader:SetPoint("TOPLEFT", DisableBCFlashSubtext, "BOTTOMLEFT", -5, -15)
 TormentHeader:SetText("Torment Warning Thresholds")
 
@@ -643,8 +641,6 @@ BindCatcher:SetScript("OnMouseWheel", function(self, delta)
     BindCatcher_HandleKey(self, mappedBtn)
 end)
 
-local TargetBindLabel = KeybindsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-TargetBindLabel:SetPoint("TOPLEFT", 20, -20)
 local KeybindHelperText = KeybindsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 KeybindHelperText:SetPoint("TOPLEFT", 20, -15)
 KeybindHelperText:SetText("Click to Set Keybind | ESC to ABORT")
@@ -655,31 +651,23 @@ TargetBindLabel:SetPoint("TOPLEFT", KeybindHelperText, "BOTTOMLEFT", 0, -15)
 TargetBindLabel:SetText("Target Primary Prey:")
 
 local TargetBindBtn = CreateFrame("Button", nil, KeybindsTab, "UIPanelButtonTemplate")
-TargetBindBtn:SetSize(140, 25)
-TargetBindBtn:SetPoint("TOPLEFT", TargetBindLabel, "BOTTOMLEFT", 0, -10)
 TargetBindBtn:SetSize(130, 22)
 TargetBindBtn:SetPoint("TOPLEFT", TargetBindLabel, "BOTTOMLEFT", 0, -5)
 
 local TargetClearBtn = CreateFrame("Button", nil, KeybindsTab, "UIPanelButtonTemplate")
-TargetClearBtn:SetSize(60, 25)
 TargetClearBtn:SetSize(55, 22)
 TargetClearBtn:SetPoint("LEFT", TargetBindBtn, "RIGHT", 5, 0)
 TargetClearBtn:SetText("Clear")
 
-local TrapBindLabel = KeybindsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-TrapBindLabel:SetPoint("TOPLEFT", TargetBindBtn, "BOTTOMLEFT", 0, -20)
 local TrapBindLabel = KeybindsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 TrapBindLabel:SetPoint("TOPLEFT", TargetBindBtn, "BOTTOMLEFT", 0, -15)
 TrapBindLabel:SetText("Use Disarmed Trap:")
 
 local TrapBindBtn = CreateFrame("Button", nil, KeybindsTab, "UIPanelButtonTemplate")
-TrapBindBtn:SetSize(140, 25)
-TrapBindBtn:SetPoint("TOPLEFT", TrapBindLabel, "BOTTOMLEFT", 0, -10)
 TrapBindBtn:SetSize(130, 22)
 TrapBindBtn:SetPoint("TOPLEFT", TrapBindLabel, "BOTTOMLEFT", 0, -5)
 
 local TrapClearBtn = CreateFrame("Button", nil, KeybindsTab, "UIPanelButtonTemplate")
-TrapClearBtn:SetSize(60, 25)
 TrapClearBtn:SetSize(55, 22)
 TrapClearBtn:SetPoint("LEFT", TrapBindBtn, "RIGHT", 5, 0)
 TrapClearBtn:SetText("Clear")
@@ -1398,7 +1386,6 @@ function TormentFrame:UpdateDisplay(stacks)
     if isNightmare and stacks >= tRed then
         if self.lastWarnedStack ~= stacks then
             self.lastWarnedStack = stacks
-            print("|cffFF0000PreyNotifier: Warning:|r " .. iconStr .. "Torment at |cffFFFF00" .. stacks .. " stacks|r. Taking |cffFF0000" .. percent .. "%|r increased damage from all sources.")
             if showDebuffs then
                 local iconTex = self.icon:GetTexture()
                 local iconStr = iconTex and ("|T" .. tostring(iconTex) .. ":16|t") or ""
@@ -2077,7 +2064,6 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     -- ECHO OF PREDATION TRACKING
     if mobName == "Echo of Predation" and PreyNotifierDB and PreyNotifierDB["_IsNightmare"] and IsInHuntZone() then
         local currentTime = GetTime()
-        if (currentTime - lastEchoAlertTime) >= (PreyNotifierDB["_Cooldown"] or 45) then
         if (currentTime - lastEchoAlertTime) >= 15 then
             lastEchoAlertTime = currentTime 
             
