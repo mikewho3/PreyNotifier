@@ -88,7 +88,7 @@ _G["BINDING_NAME_CLICK PreyNotifierEchoBtn:LeftButton"] = "Target Echo of Predat
 -- ==========================================
 local UIFrame = CreateFrame("Frame", "PreyNotifierUI", UIParent, "BasicFrameTemplateWithInset")
 UIFrame:SetFrameStrata("DIALOG")
-UIFrame:SetSize(400, 450) 
+UIFrame:SetSize(400, 500) 
 UIFrame:SetPoint("CENTER")
 UIFrame:SetMovable(true)
 UIFrame:EnableMouse(true)
@@ -328,7 +328,7 @@ end)
 
 local DisableBCFlashChk = CreateFrame("CheckButton", "PreyNotifierDisableBCFlashChk", OptionsTab, "UICheckButtonTemplate")
 DisableBCFlashChk:SetSize(24, 24)
-DisableBCFlashChk:SetPoint("TOPLEFT", TrackDebuffsChk, "BOTTOMLEFT", 0, -25)
+DisableBCFlashChk:SetPoint("TOPLEFT", TrackDebuffsChk, "BOTTOMLEFT", 0, -10)
 DisableBCFlashChk.text = DisableBCFlashChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 DisableBCFlashChk.text:SetPoint("LEFT", DisableBCFlashChk, "RIGHT", 5, 0)
 DisableBCFlashChk.text:SetText("Disable Bloody Command Screen Flash")
@@ -349,7 +349,7 @@ end)
 -- TORMENT THRESHOLD SETTINGS
 -- ------------------------------------------
 local TormentHeader = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-TormentHeader:SetPoint("TOPLEFT", DisableBCFlashSubtext, "BOTTOMLEFT", -5, -15)
+TormentHeader:SetPoint("TOPLEFT", DisableBCFlashSubtext, "BOTTOMLEFT", -5, -10)
 TormentHeader:SetText("Torment Warning Thresholds")
 
 local YellowWarnLabel = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
