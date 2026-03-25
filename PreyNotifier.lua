@@ -11,6 +11,23 @@ local UpdateTargetList
 local UpdateDebuffs
 local UpdateProgressBar
 local CustomTracker
+local ApplyAmbushWarningStyle
+
+local AmbushGraphicOptions = {
+    { key = "sharp_blood", text = "Sharp Weapons w/Blood", texture = "ambushed_test.tga", glow = "ambushed_test_glow.tga" },
+    { key = "placeholder1", text = "Placeholder1", texture = "placeholder1.tga", glow = "placeholder1_glow.tga" },
+    { key = "placeholder2", text = "Placeholder2", texture = "placeholder2.tga", glow = "placeholder2_glow.tga" },
+    { key = "placeholder3", text = "Placeholder3", texture = "placeholder3.tga", glow = "placeholder3_glow.tga" },
+}
+
+local function GetAmbushGraphicOption(styleKey)
+    for _, option in ipairs(AmbushGraphicOptions) do
+        if option.key == styleKey then
+            return option
+        end
+    end
+    return AmbushGraphicOptions[1]
+end
 
 local ValidHuntZones = {
 
@@ -88,7 +105,7 @@ _G["BINDING_NAME_CLICK PreyNotifierEchoBtn:LeftButton"] = "Target Echo of Predat
 -- ==========================================
 local UIFrame = CreateFrame("Frame", "PreyNotifierUI", UIParent, "BasicFrameTemplateWithInset")
 UIFrame:SetFrameStrata("DIALOG")
-UIFrame:SetSize(400, 500) 
+UIFrame:SetSize(480, 500) 
 UIFrame:SetPoint("CENTER")
 UIFrame:SetMovable(true)
 UIFrame:EnableMouse(true)
@@ -134,6 +151,14 @@ OptionsTab:SetPoint("TOPLEFT", UIFrame, "TOPLEFT", 0, -60)
 OptionsTab:SetPoint("BOTTOMRIGHT", UIFrame, "BOTTOMRIGHT", 0, 0)
 OptionsTab:Hide()
 
+local OptionsScrollFrame = CreateFrame("ScrollFrame", "PreyNotifierOptionsScrollFrame", OptionsTab, "UIPanelScrollFrameTemplate")
+OptionsScrollFrame:SetPoint("TOPLEFT", OptionsTab, "TOPLEFT", 8, -8)
+OptionsScrollFrame:SetPoint("BOTTOMRIGHT", OptionsTab, "BOTTOMRIGHT", -36, 8)
+
+local OptionsContent = CreateFrame("Frame", nil, OptionsScrollFrame)
+OptionsContent:SetSize(420, 800)
+OptionsScrollFrame:SetScrollChild(OptionsContent)
+
 local SoundTab = CreateFrame("Frame", nil, UIFrame)
 SoundTab:SetPoint("TOPLEFT", UIFrame, "TOPLEFT", 0, -60)
 SoundTab:SetPoint("BOTTOMRIGHT", UIFrame, "BOTTOMRIGHT", 0, 0)
@@ -158,6 +183,7 @@ end)
 Tab2Btn:SetScript("OnClick", function()
     PreyListTab:Hide()
     OptionsTab:Show()
+    OptionsScrollFrame:SetVerticalScroll(0)
     SoundTab:Hide()
     KeybindsTab:Hide()
     Tab1Btn:UnlockHighlight()
@@ -196,7 +222,7 @@ Tab1Btn:LockHighlight() -- Default to tab 1
 -- Text Input Box
 local InputBox = CreateFrame("EditBox", nil, PreyListTab, "InputBoxTemplate")
 InputBox:SetPoint("TOPLEFT", 25, -10)
-InputBox:SetSize(150, 25)
+InputBox:SetSize(190, 25)
 InputBox:SetAutoFocus(false)
 
 -- Add Target Button
@@ -208,17 +234,17 @@ AddButton:SetText("Add")
 -- ==========================================
 -- TAB 2: OPTIONS CONTENT
 -- ==========================================
-local OptionsHeader = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+local OptionsHeader = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 OptionsHeader:SetPoint("TOPLEFT", 20, -15)
 OptionsHeader:SetText("Bar/Button only displays in the Prey Zone")
 
 -- Timer Slider Label
-local SliderLabel = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+local SliderLabel = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 SliderLabel:SetPoint("TOPLEFT", OptionsHeader, "BOTTOMLEFT", 0, -15) 
 SliderLabel:SetText("Alert Cooldown (Seconds):")
 
 -- The Cooldown Slider
-local CooldownSlider = CreateFrame("Slider", "PreyNotifierCooldownSlider", OptionsTab, "OptionsSliderTemplate")
+local CooldownSlider = CreateFrame("Slider", "PreyNotifierCooldownSlider", OptionsContent, "OptionsSliderTemplate")
 CooldownSlider:SetPoint("TOPLEFT", SliderLabel, "BOTTOMLEFT", 0, -5) 
 CooldownSlider:SetSize(160, 16)
 CooldownSlider:SetMinMaxValues(30, 120)
@@ -229,7 +255,7 @@ local SliderValueText = CooldownSlider:CreateFontString(nil, "OVERLAY", "GameFon
 SliderValueText:SetPoint("LEFT", CooldownSlider, "RIGHT", 10, 0)
 
 -- Progress Bar Toggle Checkbox
-local ShowBarChk = CreateFrame("CheckButton", "PreyNotifierShowBarChk", OptionsTab, "UICheckButtonTemplate")
+local ShowBarChk = CreateFrame("CheckButton", "PreyNotifierShowBarChk", OptionsContent, "UICheckButtonTemplate")
 ShowBarChk:SetSize(24, 24)
 ShowBarChk:SetPoint("TOPLEFT", CooldownSlider, "BOTTOMLEFT", -5, -15) 
 ShowBarChk.text = ShowBarChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -258,7 +284,7 @@ end)
 -- ------------------------------------------
 -- TARGET BUTTON TOGGLE CHECKBOX
 -- ------------------------------------------
-local ShowTargetBtnChk = CreateFrame("CheckButton", "PreyNotifierShowTargetBtnChk", OptionsTab, "UICheckButtonTemplate")
+local ShowTargetBtnChk = CreateFrame("CheckButton", "PreyNotifierShowTargetBtnChk", OptionsContent, "UICheckButtonTemplate")
 ShowTargetBtnChk:SetSize(24, 24)
 ShowTargetBtnChk:SetPoint("TOPLEFT", SubText2, "BOTTOMLEFT", -5, -15) 
 ShowTargetBtnChk.text = ShowTargetBtnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -280,7 +306,7 @@ end)
 -- ------------------------------------------
 -- HIDE BLIZZARD UI CHECKBOX
 -- ------------------------------------------
-local HideBlizzChk = CreateFrame("CheckButton", "PreyNotifierHideBlizzChk", OptionsTab, "UICheckButtonTemplate")
+local HideBlizzChk = CreateFrame("CheckButton", "PreyNotifierHideBlizzChk", OptionsContent, "UICheckButtonTemplate")
 HideBlizzChk:SetSize(24, 24)
 HideBlizzChk:SetPoint("TOPLEFT", ShowTargetBtnSubtext, "BOTTOMLEFT", -5, -10) 
 HideBlizzChk.text = HideBlizzChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -299,7 +325,7 @@ HideBlizzChk:SetScript("OnClick", function(self)
     UpdateProgressBar()
 end)
 
-local RaidWarnChk = CreateFrame("CheckButton", "PreyNotifierRaidWarnChk", OptionsTab, "UICheckButtonTemplate")
+local RaidWarnChk = CreateFrame("CheckButton", "PreyNotifierRaidWarnChk", OptionsContent, "UICheckButtonTemplate")
 RaidWarnChk:SetSize(24, 24)
 RaidWarnChk:SetPoint("TOPLEFT", HideBlizzSubtext, "BOTTOMLEFT", -5, -10)
 RaidWarnChk.text = RaidWarnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -312,7 +338,7 @@ RaidWarnChk:SetScript("OnClick", function(self)
     end
 end)
 
-local TrackDebuffsChk = CreateFrame("CheckButton", "PreyNotifierTrackDebuffsChk", OptionsTab, "UICheckButtonTemplate")
+local TrackDebuffsChk = CreateFrame("CheckButton", "PreyNotifierTrackDebuffsChk", OptionsContent, "UICheckButtonTemplate")
 TrackDebuffsChk:SetSize(24, 24)
 TrackDebuffsChk:SetPoint("TOPLEFT", RaidWarnChk, "BOTTOMLEFT", 0, -10)
 TrackDebuffsChk.text = TrackDebuffsChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -326,7 +352,7 @@ TrackDebuffsChk:SetScript("OnClick", function(self)
     UpdateDebuffs()
 end)
 
-local DisableBCFlashChk = CreateFrame("CheckButton", "PreyNotifierDisableBCFlashChk", OptionsTab, "UICheckButtonTemplate")
+local DisableBCFlashChk = CreateFrame("CheckButton", "PreyNotifierDisableBCFlashChk", OptionsContent, "UICheckButtonTemplate")
 DisableBCFlashChk:SetSize(24, 24)
 DisableBCFlashChk:SetPoint("TOPLEFT", TrackDebuffsChk, "BOTTOMLEFT", 0, -10)
 DisableBCFlashChk.text = DisableBCFlashChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -345,41 +371,100 @@ DisableBCFlashChk:SetScript("OnClick", function(self)
     UpdateDebuffs()
 end)
 
+local ShowAmbushWarnChk = CreateFrame("CheckButton", "PreyNotifierShowAmbushWarnChk", OptionsContent, "UICheckButtonTemplate")
+ShowAmbushWarnChk:SetSize(24, 24)
+ShowAmbushWarnChk:SetPoint("TOPLEFT", DisableBCFlashSubtext, "BOTTOMLEFT", -5, -10)
+ShowAmbushWarnChk.text = ShowAmbushWarnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ShowAmbushWarnChk.text:SetPoint("LEFT", ShowAmbushWarnChk, "RIGHT", 5, 0)
+ShowAmbushWarnChk.text:SetText("Show Ambushed! Warning Graphic")
+
+local ShowAmbushWarnSubtext = ShowAmbushWarnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ShowAmbushWarnSubtext:SetPoint("TOPLEFT", ShowAmbushWarnChk, "BOTTOMLEFT", 5, -2)
+ShowAmbushWarnSubtext:SetText("Enable/disable the ambush warning graphic.")
+ShowAmbushWarnSubtext:SetTextColor(0.65, 0.55, 0.15)
+
+ShowAmbushWarnChk:SetScript("OnClick", function(self)
+    local enabled = self:GetChecked() and true or false
+    if PreyNotifierDB then
+        PreyNotifierDB["_ShowAmbushWarning"] = enabled
+    end
+    if CustomTracker and CustomTracker.AmbushWarning and not enabled then
+        CustomTracker.AmbushWarning:Hide()
+    end
+end)
+
+local AmbushStyleLabel = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+AmbushStyleLabel:SetPoint("TOPLEFT", ShowAmbushWarnSubtext, "BOTTOMLEFT", 0, -10)
+AmbushStyleLabel:SetText("Ambush Graphic Style:")
+
+local AmbushStyleDropDown = CreateFrame("Frame", "PreyNotifierAmbushStyleDropDown", OptionsContent, "UIDropDownMenuTemplate")
+AmbushStyleDropDown:SetPoint("TOPLEFT", AmbushStyleLabel, "BOTTOMLEFT", -15, -5)
+UIDropDownMenu_SetWidth(AmbushStyleDropDown, 230)
+UIDropDownMenu_JustifyText(AmbushStyleDropDown, "LEFT")
+UIDropDownMenu_Initialize(AmbushStyleDropDown, function(self, level)
+    if level ~= 1 then return end
+
+    local currentStyle = "sharp_blood"
+    if PreyNotifierDB and PreyNotifierDB["_AmbushGraphicStyle"] then
+        currentStyle = PreyNotifierDB["_AmbushGraphicStyle"]
+    end
+
+    for _, option in ipairs(AmbushGraphicOptions) do
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = option.text
+        info.value = option.key
+        info.arg1 = option.key
+        info.checked = (currentStyle == option.key)
+        info.func = function(_, selectedKey)
+            local selected = GetAmbushGraphicOption(selectedKey)
+            if PreyNotifierDB then
+                PreyNotifierDB["_AmbushGraphicStyle"] = selected.key
+            end
+            UIDropDownMenu_SetSelectedValue(AmbushStyleDropDown, selected.key)
+            UIDropDownMenu_SetText(AmbushStyleDropDown, selected.text)
+            if ApplyAmbushWarningStyle then
+                ApplyAmbushWarningStyle(selected.key)
+            end
+        end
+        UIDropDownMenu_AddButton(info, level)
+    end
+end)
+
 -- ------------------------------------------
 -- TORMENT THRESHOLD SETTINGS
 -- ------------------------------------------
-local TormentHeader = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-TormentHeader:SetPoint("TOPLEFT", DisableBCFlashSubtext, "BOTTOMLEFT", -5, -10)
+local TormentHeader = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+TormentHeader:SetPoint("TOPLEFT", AmbushStyleDropDown, "BOTTOMLEFT", 5, -10)
 TormentHeader:SetText("Torment Warning Thresholds")
 
-local YellowWarnLabel = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+local YellowWarnLabel = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 YellowWarnLabel:SetPoint("TOPLEFT", TormentHeader, "BOTTOMLEFT", 0, -10)
 YellowWarnLabel:SetText("Warning Stacks:")
 
-local YellowWarnBox = CreateFrame("EditBox", "PreyNotifierYellowWarnBox", OptionsTab, "InputBoxTemplate")
+local YellowWarnBox = CreateFrame("EditBox", "PreyNotifierYellowWarnBox", OptionsContent, "InputBoxTemplate")
 YellowWarnBox:SetPoint("LEFT", YellowWarnLabel, "RIGHT", 5, 0)
 YellowWarnBox:SetSize(30, 20)
 YellowWarnBox:SetNumeric(true)
 YellowWarnBox:SetAutoFocus(false)
 YellowWarnBox:SetMaxLetters(2)
 
-local RedWarnLabel = OptionsTab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+local RedWarnLabel = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 RedWarnLabel:SetPoint("LEFT", YellowWarnBox, "RIGHT", 15, 0)
 RedWarnLabel:SetText("Critical Stacks:")
 
-local RedWarnBox = CreateFrame("EditBox", "PreyNotifierRedWarnBox", OptionsTab, "InputBoxTemplate")
+local RedWarnBox = CreateFrame("EditBox", "PreyNotifierRedWarnBox", OptionsContent, "InputBoxTemplate")
 RedWarnBox:SetPoint("LEFT", RedWarnLabel, "RIGHT", 5, 0)
 RedWarnBox:SetSize(30, 20)
 RedWarnBox:SetNumeric(true)
 RedWarnBox:SetAutoFocus(false)
 RedWarnBox:SetMaxLetters(2)
 
-local TormentSaveBtn = CreateFrame("Button", nil, OptionsTab, "UIPanelButtonTemplate")
+local TormentSaveBtn = CreateFrame("Button", nil, OptionsContent, "UIPanelButtonTemplate")
 TormentSaveBtn:SetPoint("LEFT", RedWarnBox, "RIGHT", 10, 0)
 TormentSaveBtn:SetSize(55, 22)
 TormentSaveBtn:SetText("Save")
 
-local TormentResetBtn = CreateFrame("Button", nil, OptionsTab, "UIPanelButtonTemplate")
+local TormentResetBtn = CreateFrame("Button", nil, OptionsContent, "UIPanelButtonTemplate")
 TormentResetBtn:SetPoint("LEFT", TormentSaveBtn, "RIGHT", 5, 0)
 TormentResetBtn:SetSize(55, 22)
 TormentResetBtn:SetText("Reset")
@@ -427,6 +512,8 @@ end
 TormentSaveBtn:SetScript("OnClick", SaveTormentSettings)
 YellowWarnBox:SetScript("OnEnterPressed", SaveTormentSettings)
 RedWarnBox:SetScript("OnEnterPressed", SaveTormentSettings)
+
+OptionsContent:SetHeight(760)
 
 
 -- ==========================================
@@ -841,7 +928,7 @@ end)
 -- ==========================================
 local ScrollFrame = CreateFrame("ScrollFrame", "PreyNotifierScrollFrame", PreyListTab, "UIPanelScrollFrameTemplate")
 ScrollFrame:SetPoint("TOPLEFT", InputBox, "BOTTOMLEFT", 0, -20)
-ScrollFrame:SetPoint("BOTTOMRIGHT", PreyListTab, "BOTTOMRIGHT", -40, 50)
+ScrollFrame:SetPoint("BOTTOMRIGHT", PreyListTab, "BOTTOMRIGHT", -36, 50)
 
 local ScrollChild = CreateFrame("Frame")
 ScrollChild:SetSize(ScrollFrame:GetWidth(), 1) 
@@ -859,18 +946,18 @@ UpdateTargetList = function()
         if not mobName:match("^_") then
             if not listFrames[rowIndex] then
                 local row = CreateFrame("Frame", nil, ScrollChild)
-                row:SetSize(265, 22) 
+                row:SetSize(415, 22) 
                 
                 local txt = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 txt:SetPoint("LEFT", 5, 0)
-                txt:SetWidth(150) 
+                txt:SetWidth(305) 
                 txt:SetWordWrap(false) 
                 txt:SetJustifyH("LEFT") 
                 row.text = txt
                 
                 local delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                 delBtn:SetSize(22, 22)
-                delBtn:SetPoint("RIGHT", 0, 0)
+                delBtn:SetPoint("RIGHT", -6, 0)
                 delBtn:SetText("X")
                 row.delBtn = delBtn
 
@@ -937,7 +1024,7 @@ end
 
 local ClearPriBtn = CreateFrame("Button", nil, PreyListTab, "UIPanelButtonTemplate")
 ClearPriBtn:SetSize(100, 22)
-ClearPriBtn:SetPoint("TOPRIGHT", ScrollFrame, "BOTTOMRIGHT", 0, -10)
+ClearPriBtn:SetPoint("TOPRIGHT", ScrollFrame, "BOTTOMRIGHT", -6, -10)
 ClearPriBtn:SetText("Clear Primary")
 
 ClearPriBtn:SetScript("OnClick", function()
@@ -982,6 +1069,17 @@ UIFrame:SetScript("OnShow", function()
     end
     if PreyNotifierDB and PreyNotifierDB["_DisableBCFlash"] ~= nil then
         DisableBCFlashChk:SetChecked(PreyNotifierDB["_DisableBCFlash"])
+    end
+    if PreyNotifierDB and PreyNotifierDB["_ShowAmbushWarning"] ~= nil then
+        ShowAmbushWarnChk:SetChecked(PreyNotifierDB["_ShowAmbushWarning"])
+    end
+    if PreyNotifierDB then
+        local selected = GetAmbushGraphicOption(PreyNotifierDB["_AmbushGraphicStyle"])
+        UIDropDownMenu_SetSelectedValue(AmbushStyleDropDown, selected.key)
+        UIDropDownMenu_SetText(AmbushStyleDropDown, selected.text)
+        if ApplyAmbushWarningStyle then
+            ApplyAmbushWarningStyle(selected.key)
+        end
     end
     if PreyNotifierDB and PreyNotifierDB["_PlaySound"] ~= nil then
         EnableSoundChk:SetChecked(PreyNotifierDB["_PlaySound"])
@@ -1247,6 +1345,55 @@ CustomTracker.textBg:SetPoint("TOPLEFT", CustomTracker.text, "TOPLEFT", -5, 2)
 CustomTracker.textBg:SetPoint("BOTTOMRIGHT", CustomTracker.text, "BOTTOMRIGHT", 5, -2)
 
 CustomTracker:Hide()
+
+-- ------------------------------------------
+-- AMBUSH WARNING GRAPHIC
+-- ------------------------------------------
+local AmbushWarningFrame = CreateFrame("Frame", nil, CustomTracker)
+AmbushWarningFrame:SetSize(128, 70)
+AmbushWarningFrame:SetPoint("BOTTOM", CustomTracker, "TOP", 0, -50)
+AmbushWarningFrame:EnableMouse(false)
+
+local AmbushTexture = AmbushWarningFrame:CreateTexture(nil, "ARTWORK")
+AmbushTexture:SetAllPoints()
+AmbushTexture:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\ambushed_test.tga")
+
+-- Draw glow above the base art so additive blending is actually visible.
+local AmbushGlow = AmbushWarningFrame:CreateTexture(nil, "OVERLAY", nil, 1)
+AmbushGlow:SetPoint("TOPLEFT", -6, 6)
+AmbushGlow:SetPoint("BOTTOMRIGHT", 6, -6)
+AmbushGlow:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\ambushed_test_glow.tga")
+AmbushGlow:SetBlendMode("ADD")
+AmbushGlow:SetVertexColor(1, 1, 1)
+AmbushGlow:SetAlpha(0)
+
+local AmbushGlowPulse = AmbushGlow:CreateAnimationGroup()
+AmbushGlowPulse:SetLooping("BOUNCE")
+local AmbushAlphaAnim = AmbushGlowPulse:CreateAnimation("Alpha")
+AmbushAlphaAnim:SetFromAlpha(0.3)
+AmbushAlphaAnim:SetToAlpha(1.0)
+AmbushAlphaAnim:SetDuration(0.5) -- Urgent pulse
+
+AmbushWarningFrame:SetScript("OnShow", function()
+    AmbushGlowPulse:Stop()
+    AmbushGlow:SetAlpha(0.3)
+    AmbushGlowPulse:Play()
+end)
+AmbushWarningFrame:SetScript("OnHide", function()
+    AmbushGlowPulse:Stop()
+    AmbushGlow:SetAlpha(0)
+end)
+
+ApplyAmbushWarningStyle = function(styleKey)
+    local selected = GetAmbushGraphicOption(styleKey or (PreyNotifierDB and PreyNotifierDB["_AmbushGraphicStyle"]))
+    local root = "Interface\\AddOns\\PreyNotifier\\Art\\"
+    AmbushTexture:SetTexture(root .. selected.texture)
+    AmbushGlow:SetTexture(root .. selected.glow)
+end
+
+ApplyAmbushWarningStyle()
+AmbushWarningFrame:Hide()
+CustomTracker.AmbushWarning = AmbushWarningFrame -- Attach it for easy access
 
 -- ------------------------------------------
 -- DEBUFF TRACKING FRAMES
@@ -1900,6 +2047,13 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         if PreyNotifierDB["_DisableBCFlash"] == nil then
             PreyNotifierDB["_DisableBCFlash"] = false
         end
+        if PreyNotifierDB["_ShowAmbushWarning"] == nil then
+            PreyNotifierDB["_ShowAmbushWarning"] = true
+        end
+        if PreyNotifierDB["_AmbushGraphicStyle"] == nil then
+            PreyNotifierDB["_AmbushGraphicStyle"] = "sharp_blood"
+        end
+        PreyNotifierDB["_AmbushGraphicStyle"] = GetAmbushGraphicOption(PreyNotifierDB["_AmbushGraphicStyle"]).key
         if PreyNotifierDB["_EchoSoundFile"] == nil then
             PreyNotifierDB["_EchoSoundFile"] = 554099
         end
@@ -1911,6 +2065,12 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         
         UpdatePosition(PreyNotifierDB["_MinimapAngle"] or math.rad(225))
+        if ApplyAmbushWarningStyle then
+            ApplyAmbushWarningStyle(PreyNotifierDB["_AmbushGraphicStyle"])
+        end
+        if CustomTracker and CustomTracker.AmbushWarning and PreyNotifierDB["_ShowAmbushWarning"] == false then
+            CustomTracker.AmbushWarning:Hide()
+        end
         
         -- Load Progress Bar saved position
         if PreyNotifierDB["_ProgPoint"] then
@@ -2083,9 +2243,31 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     end
     
     if not isHuntComplete and PreyNotifierDB and PreyNotifierDB[mobName] then
+        -- Ignore non-attackable units (e.g., inspectable prey targets that are part of the tracking mini-game).
+        if not UnitCanAttack("player", currentUnit) then
+            return
+        end
+
         local currentTime = GetTime()
         if (currentTime - lastAlertTime) >= (PreyNotifierDB["_Cooldown"] or 45) then
             lastAlertTime = currentTime 
+
+            -- Show the new Ambush graphic
+            if CustomTracker.AmbushWarning then
+                if PreyNotifierDB["_ShowAmbushWarning"] ~= false then
+                    if ApplyAmbushWarningStyle then
+                        ApplyAmbushWarningStyle(PreyNotifierDB["_AmbushGraphicStyle"])
+                    end
+                    CustomTracker.AmbushWarning:Show()
+                    C_Timer.After(5, function()
+                        if CustomTracker.AmbushWarning then
+                            CustomTracker.AmbushWarning:Hide()
+                        end
+                    end)
+                else
+                    CustomTracker.AmbushWarning:Hide()
+                end
+            end
             
             if PreyNotifierDB["_PlaySound"] ~= false then
                 local soundID = PreyNotifierDB["_SoundFile"] or 552035
