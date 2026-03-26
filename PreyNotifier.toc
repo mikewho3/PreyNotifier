@@ -2,7 +2,7 @@
 ## Title: PreyNotifier
 ## Notes: Alerts and Notifies You of Midnight Prey ambushes.
 ## Author: MikeWho3
-## Version: 2.010
+## Version: 2.10
 ## SavedVariables: PreyNotifierDB
 ## X-Wago-ID: kGryL7Ky
 ## X-Curse-Project-ID: 1484351
