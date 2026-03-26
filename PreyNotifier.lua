@@ -5,6 +5,7 @@ local lastEchoAlertTime = 0
 local isHuntComplete = false
 local isFlashSuppressed = false
 local defaultScreenFlash = "1"
+local isHuntActiveCached = false
 
 -- Forward Declarations
 local UpdateTargetList
@@ -14,10 +15,10 @@ local CustomTracker
 local ApplyAmbushWarningStyle
 
 local AmbushGraphicOptions = {
-    { key = "sharp_blood", text = "Sharp Weapons w/Blood", texture = "ambushed_test.tga", glow = "ambushed_test_glow.tga" },
-    { key = "placeholder1", text = "Placeholder1", texture = "placeholder1.tga", glow = "placeholder1_glow.tga" },
-    { key = "placeholder2", text = "Placeholder2", texture = "placeholder2.tga", glow = "placeholder2_glow.tga" },
-    { key = "placeholder3", text = "Placeholder3", texture = "placeholder3.tga", glow = "placeholder3_glow.tga" },
+    { key = "sharp_blood", text = "Sharp Weapons w/Blood", texture = "ambushed_test.tga", glow = "ambushed_test_glow.tga", selectable = true },
+    { key = "placeholder1", text = "Bloody Words on Shield", texture = "ambushed2.tga", glow = "ambushed2_glow.tga", selectable = true },
+    { key = "placeholder2", text = "Placeholder2", texture = "placeholder2.tga", glow = "placeholder2_glow.tga", selectable = false },
+    { key = "placeholder3", text = "Placeholder3", texture = "placeholder3.tga", glow = "placeholder3_glow.tga", selectable = false },
 }
 
 local function GetAmbushGraphicOption(styleKey)
@@ -48,6 +49,65 @@ local function IsInHuntZone()
     return false
 end
 
+local function FindPlayerDebuff(spellName)
+    if not C_UnitAuras then return nil end
+    local i = 1
+    while true do
+        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HARMFUL")
+        if not aura then break end
+        
+        -- Use pcall to safely compare the name, avoiding crashes from Blizzard's "Secret/Private" auras
+        local success, isMatch = pcall(function() return aura.name == spellName end)
+        if success and isMatch then
+            return aura
+        end
+        i = i + 1
+    end
+    
+    -- Also check HELPFUL auras, as Blizzard sometimes categorizes zone mechanics as buffs internally
+    i = 1
+    while true do
+        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+        if not aura then break end
+        
+        local success, isMatch = pcall(function() return aura.name == spellName end)
+        if success and isMatch then
+            return aura
+        end
+        i = i + 1
+    end
+    return nil
+end
+
+local function IsHuntActive()
+    local inZone = IsInHuntZone()
+    if not inZone then 
+        isHuntActiveCached = false
+        return false 
+    end
+    
+    local hasQuest = PreyNotifierDB and PreyNotifierDB["_PrimaryTarget"]
+    if not hasQuest then
+        isHuntActiveCached = false
+        return false
+    end
+    
+    local hasDebuff = FindPlayerDebuff("Bloodsworn")
+    if hasDebuff then
+        isHuntActiveCached = true
+        return true
+    end
+    
+    -- Edge case: Auras can drop on death or become restricted to read when entering combat.
+    -- If we are in the zone with the quest, and were previously active, assume we still are!
+    if isHuntActiveCached and (InCombatLockdown() or UnitIsDeadOrGhost("player")) then
+        return true
+    end
+    
+    isHuntActiveCached = false
+    return false
+end
+
 local function UpdateTargetButton()
     if InCombatLockdown() then return end
     if not PreyNotifierDB then return end
@@ -69,7 +129,7 @@ local function UpdateTargetButton()
     btn:Show() -- Ensure the frame is active so Alpha can control its visual state
 
     -- Visually "hide" the button without functionally breaking the keybinds via Hide()
-    if not IsInHuntZone() or PreyNotifierDB["_ShowTargetBtn"] == false or not prim then
+    if not IsHuntActive() or PreyNotifierDB["_ShowTargetBtn"] == false then
         btn:SetAlpha(0)
         btn:EnableMouse(false)
     else
@@ -393,8 +453,30 @@ ShowAmbushWarnChk:SetScript("OnClick", function(self)
     end
 end)
 
+local ShowEchoWarnChk = CreateFrame("CheckButton", "PreyNotifierShowEchoWarnChk", OptionsContent, "UICheckButtonTemplate")
+ShowEchoWarnChk:SetSize(24, 24)
+ShowEchoWarnChk:SetPoint("TOPLEFT", ShowAmbushWarnSubtext, "BOTTOMLEFT", -5, -10)
+ShowEchoWarnChk.text = ShowEchoWarnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ShowEchoWarnChk.text:SetPoint("LEFT", ShowEchoWarnChk, "RIGHT", 5, 0)
+ShowEchoWarnChk.text:SetText("Show Echo of Predation Warning Graphic")
+
+local ShowEchoWarnSubtext = ShowEchoWarnChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+ShowEchoWarnSubtext:SetPoint("TOPLEFT", ShowEchoWarnChk, "BOTTOMLEFT", 5, -2)
+ShowEchoWarnSubtext:SetText("Enable/disable the Echo of Predation warning graphic.")
+ShowEchoWarnSubtext:SetTextColor(0.65, 0.55, 0.15)
+
+ShowEchoWarnChk:SetScript("OnClick", function(self)
+    local enabled = self:GetChecked() and true or false
+    if PreyNotifierDB then
+        PreyNotifierDB["_ShowEchoWarning"] = enabled
+    end
+    if currentWarningType == "echo" and CustomTracker and CustomTracker.AmbushWarning and not enabled then
+        CustomTracker.AmbushWarning:Hide()
+    end
+end)
+
 local AmbushStyleLabel = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-AmbushStyleLabel:SetPoint("TOPLEFT", ShowAmbushWarnSubtext, "BOTTOMLEFT", 0, -10)
+AmbushStyleLabel:SetPoint("TOPLEFT", ShowEchoWarnSubtext, "BOTTOMLEFT", 0, -10)
 AmbushStyleLabel:SetText("Ambush Graphic Style:")
 
 local AmbushStyleDropDown = CreateFrame("Frame", "PreyNotifierAmbushStyleDropDown", OptionsContent, "UIDropDownMenuTemplate")
@@ -410,6 +492,9 @@ UIDropDownMenu_Initialize(AmbushStyleDropDown, function(self, level)
     end
 
     for _, option in ipairs(AmbushGraphicOptions) do
+        if option.selectable == false then
+            -- Keep option definitions for future use, but hide for now.
+        else
         local info = UIDropDownMenu_CreateInfo()
         info.text = option.text
         info.value = option.key
@@ -427,6 +512,7 @@ UIDropDownMenu_Initialize(AmbushStyleDropDown, function(self, level)
             end
         end
         UIDropDownMenu_AddButton(info, level)
+        end
     end
 end)
 
@@ -1073,6 +1159,9 @@ UIFrame:SetScript("OnShow", function()
     if PreyNotifierDB and PreyNotifierDB["_ShowAmbushWarning"] ~= nil then
         ShowAmbushWarnChk:SetChecked(PreyNotifierDB["_ShowAmbushWarning"])
     end
+    if PreyNotifierDB and PreyNotifierDB["_ShowEchoWarning"] ~= nil then
+        ShowEchoWarnChk:SetChecked(PreyNotifierDB["_ShowEchoWarning"])
+    end
     if PreyNotifierDB then
         local selected = GetAmbushGraphicOption(PreyNotifierDB["_AmbushGraphicStyle"])
         UIDropDownMenu_SetSelectedValue(AmbushStyleDropDown, selected.key)
@@ -1350,8 +1439,8 @@ CustomTracker:Hide()
 -- AMBUSH WARNING GRAPHIC
 -- ------------------------------------------
 local AmbushWarningFrame = CreateFrame("Frame", nil, CustomTracker)
-AmbushWarningFrame:SetSize(128, 70)
-AmbushWarningFrame:SetPoint("BOTTOM", CustomTracker, "TOP", 0, -50)
+AmbushWarningFrame:SetSize(150, 70)
+AmbushWarningFrame:SetPoint("BOTTOM", CustomTracker, "TOP", 0, -20)
 AmbushWarningFrame:EnableMouse(false)
 
 local AmbushTexture = AmbushWarningFrame:CreateTexture(nil, "ARTWORK")
@@ -1384,11 +1473,64 @@ AmbushWarningFrame:SetScript("OnHide", function()
     AmbushGlow:SetAlpha(0)
 end)
 
+local warningHideTimer
+local currentWarningType = nil
+
+local function ShowWarningGraphic(warningType)
+    if not (CustomTracker and CustomTracker.AmbushWarning) then return end
+
+    if warningType == "ambush" and PreyNotifierDB and PreyNotifierDB["_ShowAmbushWarning"] == false then
+        CustomTracker.AmbushWarning:Hide()
+        currentWarningType = nil
+        if warningHideTimer and not warningHideTimer:IsCancelled() then
+            warningHideTimer:Cancel()
+        end
+        warningHideTimer = nil
+        return
+    end
+
+    if warningType == "echo" and PreyNotifierDB and PreyNotifierDB["_ShowEchoWarning"] == false then
+        CustomTracker.AmbushWarning:Hide()
+        currentWarningType = nil
+        if warningHideTimer and not warningHideTimer:IsCancelled() then
+            warningHideTimer:Cancel()
+        end
+        warningHideTimer = nil
+        return
+    end
+
+    local root = "Interface\\AddOns\\PreyNotifier\\Art\\"
+    if warningType == "echo" then
+        AmbushTexture:SetTexture(root .. "echo.tga")
+        AmbushGlow:SetTexture(root .. "echo_glow.tga")
+    else
+        local selected = GetAmbushGraphicOption(PreyNotifierDB and PreyNotifierDB["_AmbushGraphicStyle"])
+        AmbushTexture:SetTexture(root .. selected.texture)
+        AmbushGlow:SetTexture(root .. selected.glow)
+    end
+
+    currentWarningType = warningType
+    CustomTracker.AmbushWarning:Show()
+
+    if warningHideTimer and not warningHideTimer:IsCancelled() then
+        warningHideTimer:Cancel()
+    end
+    warningHideTimer = C_Timer.NewTimer(5, function()
+        if CustomTracker and CustomTracker.AmbushWarning then
+            CustomTracker.AmbushWarning:Hide()
+        end
+        currentWarningType = nil
+        warningHideTimer = nil
+    end)
+end
+
 ApplyAmbushWarningStyle = function(styleKey)
     local selected = GetAmbushGraphicOption(styleKey or (PreyNotifierDB and PreyNotifierDB["_AmbushGraphicStyle"]))
     local root = "Interface\\AddOns\\PreyNotifier\\Art\\"
-    AmbushTexture:SetTexture(root .. selected.texture)
-    AmbushGlow:SetTexture(root .. selected.glow)
+    if currentWarningType ~= "echo" then
+        AmbushTexture:SetTexture(root .. selected.texture)
+        AmbushGlow:SetTexture(root .. selected.glow)
+    end
 end
 
 ApplyAmbushWarningStyle()
@@ -1552,72 +1694,41 @@ TormentFrame:SetScript("OnUpdate", function(self)
             self.lastTickTime = self.lastTickTime + 60
             self.predictedStacks = self.predictedStacks + 1
             self:UpdateDisplay(self.predictedStacks)
-        end
+        end 
     end
 end)
 
-local function FindPlayerDebuff(spellName)
-    if not C_UnitAuras then return nil end
-    local i = 1
-    while true do
-        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HARMFUL")
-        if not aura then break end
-        
-        -- Use pcall to safely compare the name, avoiding crashes from Blizzard's "Secret/Private" auras
-        local success, isMatch = pcall(function() return aura.name == spellName end)
-        if success and isMatch then
-            return aura
-        end
-        i = i + 1
-    end
-    return nil
-end
-
 UpdateDebuffs = function()
-    if not IsInHuntZone() or not CustomTracker:IsShown() then
+    if not IsHuntActive() then
         if isFlashSuppressed then
             SetCVar("screenEdgeFlash", defaultScreenFlash)
-            if FullScreenStatus then FullScreenStatus:SetAlpha(1) end
+            if FullScreenStatus then 
+                FullScreenStatus:SetAlpha(1) 
+                FullScreenStatus:Show()
+            end
             isFlashSuppressed = false
         end
-        BCFrame.isActive = false
         BCFrame:Hide()
+        BCFrame.isActive = false
         TormentFrame:Hide()
+        TormentFrame.glow:Hide()
+        TormentFrame.lastTickTime = 0
+        TormentFrame.predictedStacks = 0
+        TormentFrame.glowState = 0
+        TormentFrame.lastWarnedStack = nil
         return
     end
-    
+
     local showDebuffs = PreyNotifierDB and PreyNotifierDB["_TrackDebuffs"] ~= false
 
     -- Bloody Command Check
     local bcAura = FindPlayerDebuff("Bloody Command")
-    if bcAura then
-        BCFrame.expirationTime = bcAura.expirationTime
-        if not BCFrame.isActive then
+    local isBCActive = bcAura or BCFrame.isActive
+
+    if isBCActive then
+        if bcAura then
+            BCFrame.expirationTime = bcAura.expirationTime
             BCFrame.isActive = true
-            if showDebuffs then
-                print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied!|r")
-            end
-        end
-    else
-        if not InCombatLockdown() then
-            BCFrame.isActive = false
-        end
-    end
-    
-    if BCFrame.isActive then
-        if PreyNotifierDB and PreyNotifierDB["_DisableBCFlash"] then
-            if not isFlashSuppressed then
-                defaultScreenFlash = GetCVar("screenEdgeFlash") or "1"
-                SetCVar("screenEdgeFlash", "0")
-                if FullScreenStatus then FullScreenStatus:SetAlpha(0) end
-                isFlashSuppressed = true
-            end
-        else
-            if isFlashSuppressed then
-                SetCVar("screenEdgeFlash", defaultScreenFlash)
-                if FullScreenStatus then FullScreenStatus:SetAlpha(1) end
-                isFlashSuppressed = false
-            end
         end
         
         if showDebuffs then
@@ -1625,10 +1736,25 @@ UpdateDebuffs = function()
         else
             BCFrame:Hide()
         end
+        
+        if PreyNotifierDB and PreyNotifierDB["_DisableBCFlash"] then
+            if not isFlashSuppressed then
+                defaultScreenFlash = GetCVar("screenEdgeFlash")
+                SetCVar("screenEdgeFlash", "0")
+                if FullScreenStatus then 
+                    FullScreenStatus:SetAlpha(0) 
+                    FullScreenStatus:Hide()
+                end
+                isFlashSuppressed = true
+            end
+        end
     else
         if isFlashSuppressed then
             SetCVar("screenEdgeFlash", defaultScreenFlash)
-            if FullScreenStatus then FullScreenStatus:SetAlpha(1) end
+            if FullScreenStatus then 
+                FullScreenStatus:SetAlpha(1) 
+                FullScreenStatus:Show()
+            end
             isFlashSuppressed = false
         end
         BCFrame:Hide()
@@ -1683,25 +1809,19 @@ UpdateDebuffs = function()
         TormentFrame:SetWidth(TormentFrame.icon:GetWidth() + TormentFrame.text:GetStringWidth() + 12)
     end
 end
-
 -- ------------------------------------------
 -- DYNAMIC WIDGET SCANNER
 -- ------------------------------------------
 UpdateProgressBar = function() 
-    -- ZONE KILL SWITCH: Sleep if we aren't in a hunting ground
-    if not IsInHuntZone() then
+    -- MASTER KILL SWITCH: Only show if the hunt is fully active.
+    if not IsHuntActive() then
         if CustomTracker then CustomTracker:Hide() end
+        UpdateDebuffs() -- Ensure debuff trackers are also hidden.
         return
     end
 
     if PreyNotifierDB and PreyNotifierDB["_ShowProgressBar"] == false then
         CustomTracker:Hide()
-        return
-    end
-
-    if PreyNotifierDB and not PreyNotifierDB["_PrimaryTarget"] then
-        CustomTracker:Hide()
-        isHuntComplete = false
         return
     end
 
@@ -1773,8 +1893,8 @@ UpdateProgressBar = function()
                                 pct = math.floor((info.value / info.max) * 100)
                             elseif info.progressState then
                                 if info.progressState == 1 then pct = 33; stageName = "Searching for Prey"
-                                elseif info.progressState == 2 then pct = 66; stageName = "Tracking the Prey"
-                                elseif info.progressState == 3 then pct = 100; stageName = "Found the Prey"
+                                elseif info.progressState == 2 then pct = 66; stageName = "Tracking your Prey"
+                                elseif info.progressState == 3 then pct = 100; stageName = "Found your Prey"
                                 else pct = 0; stageName = "Begin the Hunt" end
                             end
                             
@@ -1860,6 +1980,8 @@ PreyAddon:RegisterEvent("UNIT_AURA")
 PreyAddon:RegisterEvent("CHAT_MSG_MONSTER_YELL")
 PreyAddon:RegisterEvent("CHAT_MSG_MONSTER_SAY")
 PreyAddon:RegisterEvent("PLAYER_LOGOUT")
+PreyAddon:RegisterEvent("PLAYER_ALIVE")
+PreyAddon:RegisterEvent("PLAYER_UNGHOST")
 
 local function ScanQuestLogForPrey()
     if not PreyNotifierDB then return end
@@ -1956,9 +2078,11 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         UpdateTargetButton()
         return
     end
-	-- DEBUFF TRACKER
+	-- DEBUFF TRACKER & HUNT STATE CHANGE
     if event == "UNIT_AURA" and arg1 == "player" then
-        UpdateDebuffs()
+        -- The "Bloodsworn" debuff is our key for IsHuntActive(), so we need to update everything when any aura changes.
+        UpdateProgressBar()
+        UpdateTargetButton()
         return
     end
     -- BLOODY COMMAND CHAT TRACKER
@@ -1973,7 +2097,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
                 if not BCFrame.isActive then
                     BCFrame.isActive = true
                     if PreyNotifierDB and PreyNotifierDB["_TrackDebuffs"] ~= false then
-                        print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied (Chat Detected)!|r")
+                        print("|cffFF0000PreyNotifier: WARNING: Bloody Command applied!|r")
                     end
                 end
                 UpdateDebuffs()
@@ -2001,12 +2125,24 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "PLAYER_LOGOUT" then
         if isFlashSuppressed then
             SetCVar("screenEdgeFlash", defaultScreenFlash)
+            if FullScreenStatus then 
+                FullScreenStatus:SetAlpha(1)
+                FullScreenStatus:Show() 
+            end
         end
+        return
+    end
+
+    if event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" then
+        UpdateProgressBar()
+        UpdateTargetButton()
+        UpdateDebuffs()
         return
     end
 
 	-- CLEANUP WHEN COMBAT ENDS
     if event == "PLAYER_REGEN_ENABLED" then
+        UpdateProgressBar()
         UpdateTargetButton()
         UpdateDebuffs()
         return
@@ -2049,6 +2185,9 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         if PreyNotifierDB["_ShowAmbushWarning"] == nil then
             PreyNotifierDB["_ShowAmbushWarning"] = true
+        end
+        if PreyNotifierDB["_ShowEchoWarning"] == nil then
+            PreyNotifierDB["_ShowEchoWarning"] = true
         end
         if PreyNotifierDB["_AmbushGraphicStyle"] == nil then
             PreyNotifierDB["_AmbushGraphicStyle"] = "sharp_blood"
@@ -2203,8 +2342,8 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     -- AMBUSH TRACKING LOGIC
     if not isEnabled then return end
     
-    -- Optimization & Safety: Only scan targets/nameplates if we are in a valid hunt zone
-    if not IsInHuntZone() then return end
+    -- MASTER KILL SWITCH: Only scan for ambushes if the hunt is fully active.
+    if not IsHuntActive() then return end
     
     local inInstance, instanceType = IsInInstance()
     if inInstance then return end
@@ -2222,10 +2361,12 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
     if not isSafeString then return end
     
     -- ECHO OF PREDATION TRACKING
-    if mobName == "Echo of Predation" and PreyNotifierDB and PreyNotifierDB["_IsNightmare"] and IsInHuntZone() then
+    if mobName == "Echo of Predation" and PreyNotifierDB and PreyNotifierDB["_IsNightmare"] then
         local currentTime = GetTime()
         if (currentTime - lastEchoAlertTime) >= 15 then
             lastEchoAlertTime = currentTime 
+
+            ShowWarningGraphic("echo")
             
             if PreyNotifierDB["_PlayEchoSound"] ~= false then
                 local soundID = PreyNotifierDB["_EchoSoundFile"] or 554099
@@ -2252,22 +2393,7 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         if (currentTime - lastAlertTime) >= (PreyNotifierDB["_Cooldown"] or 45) then
             lastAlertTime = currentTime 
 
-            -- Show the new Ambush graphic
-            if CustomTracker.AmbushWarning then
-                if PreyNotifierDB["_ShowAmbushWarning"] ~= false then
-                    if ApplyAmbushWarningStyle then
-                        ApplyAmbushWarningStyle(PreyNotifierDB["_AmbushGraphicStyle"])
-                    end
-                    CustomTracker.AmbushWarning:Show()
-                    C_Timer.After(5, function()
-                        if CustomTracker.AmbushWarning then
-                            CustomTracker.AmbushWarning:Hide()
-                        end
-                    end)
-                else
-                    CustomTracker.AmbushWarning:Hide()
-                end
-            end
+            ShowWarningGraphic("ambush")
             
             if PreyNotifierDB["_PlaySound"] ~= false then
                 local soundID = PreyNotifierDB["_SoundFile"] or 552035
