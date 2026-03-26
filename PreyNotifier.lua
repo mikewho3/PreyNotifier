@@ -13,10 +13,11 @@ local UpdateDebuffs
 local UpdateProgressBar
 local CustomTracker
 local ApplyAmbushWarningStyle
+local UIFrame
 
 local AmbushGraphicOptions = {
     { key = "sharp_blood", text = "Sharp Weapons w/Blood", texture = "ambushed_test.tga", glow = "ambushed_test_glow.tga", selectable = true },
-    { key = "placeholder1", text = "Bloody Words on Shield", texture = "ambushed2.tga", glow = "ambushed2_glow.tga", selectable = true },
+    { key = "ambushed_shield", text = "Bloody Words on Shield", texture = "ambushed2.tga", glow = "ambushed2_glow.tga", selectable = true },
     { key = "placeholder2", text = "Placeholder2", texture = "placeholder2.tga", glow = "placeholder2_glow.tga", selectable = false },
     { key = "placeholder3", text = "Placeholder3", texture = "placeholder3.tga", glow = "placeholder3_glow.tga", selectable = false },
 }
@@ -161,9 +162,48 @@ _G["BINDING_NAME_CLICK PreyNotifierTargetBtn:MiddleButton"] = "Use Disarmed Trap
 _G["BINDING_NAME_CLICK PreyNotifierEchoBtn:LeftButton"] = "Target Echo of Predation"
 
 -- ==========================================
+-- BLIZZARD OPTIONS MENU INTEGRATION
+-- ==========================================
+-- 1. Create a blank frame for the Blizzard menu
+local OptionsPanel = CreateFrame("Frame")
+OptionsPanel.name = "PreyNotifier"
+
+-- 2. Add a Title
+local Title = OptionsPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+Title:SetPoint("TOPLEFT", 16, -16)
+Title:SetText("PreyNotifier")
+
+local SubTitle = OptionsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+SubTitle:SetPoint("TOPLEFT", Title, "BOTTOMLEFT", 0, -8)
+SubTitle:SetText("Custom Hunt Tracker & Nightmare Difficulty Tools.")
+
+-- 3. Create the "Open Settings" Button
+local OpenMenuBtn = CreateFrame("Button", nil, OptionsPanel, "UIPanelButtonTemplate")
+OpenMenuBtn:SetSize(200, 30)
+OpenMenuBtn:SetPoint("TOPLEFT", SubTitle, "BOTTOMLEFT", 0, -20)
+OpenMenuBtn:SetText("Open PreyNotifier Settings")
+
+OpenMenuBtn:SetScript("OnClick", function()
+    -- Close the Blizzard settings window so ours doesn't get buried
+    HideUIPanel(SettingsPanel) 
+    
+    -- Open your custom UI window
+    if InCombatLockdown() then
+        print("|cffFF0000PreyNotifier:|r Cannot open menu while in combat!")
+    else
+        UIFrame:Show()
+    end
+end)
+
+-- 4. Register it with the modern WoW Settings API
+local category = Settings.RegisterCanvasLayoutCategory(OptionsPanel, OptionsPanel.name)
+Settings.RegisterAddOnCategory(category)
+
+
+-- ==========================================
 -- 1. VISUAL INTERFACE (GUI) SETUP
 -- ==========================================
-local UIFrame = CreateFrame("Frame", "PreyNotifierUI", UIParent, "BasicFrameTemplateWithInset")
+UIFrame = CreateFrame("Frame", "PreyNotifierUI", UIParent, "BasicFrameTemplateWithInset")
 UIFrame:SetFrameStrata("DIALOG")
 UIFrame:SetSize(480, 500) 
 UIFrame:SetPoint("CENTER")
@@ -417,7 +457,7 @@ DisableBCFlashChk:SetSize(24, 24)
 DisableBCFlashChk:SetPoint("TOPLEFT", TrackDebuffsChk, "BOTTOMLEFT", 0, -10)
 DisableBCFlashChk.text = DisableBCFlashChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 DisableBCFlashChk.text:SetPoint("LEFT", DisableBCFlashChk, "RIGHT", 5, 0)
-DisableBCFlashChk.text:SetText("Disable Bloody Command Screen Flash")
+DisableBCFlashChk.text:SetText("WIP-Disable Bloody Command Screen Flash")
 
 local DisableBCFlashSubtext = DisableBCFlashChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 DisableBCFlashSubtext:SetPoint("TOPLEFT", DisableBCFlashChk, "BOTTOMLEFT", 5, -2) 
@@ -475,8 +515,28 @@ ShowEchoWarnChk:SetScript("OnClick", function(self)
     end
 end)
 
+local MinimapIconChk = CreateFrame("CheckButton", "PreyNotifierMinimapIconChk", OptionsContent, "UICheckButtonTemplate")
+MinimapIconChk:SetSize(24, 24)
+MinimapIconChk:SetPoint("TOPLEFT", ShowEchoWarnSubtext, "BOTTOMLEFT", -5, -10)
+MinimapIconChk.text = MinimapIconChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+MinimapIconChk.text:SetPoint("LEFT", MinimapIconChk, "RIGHT", 5, 0)
+MinimapIconChk.text:SetText("Show Minimap Button")
+
+local MinimapIconSubtext = MinimapIconChk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+MinimapIconSubtext:SetPoint("TOPLEFT", MinimapIconChk, "BOTTOMLEFT", 5, -2)
+MinimapIconSubtext:SetText("Enable/disable the minimap icon (Menu still accessible via /pn).")
+MinimapIconSubtext:SetTextColor(0.65, 0.55, 0.15)
+
+MinimapIconChk:SetScript("OnClick", function(self)
+    local enabled = self:GetChecked() and true or false
+    if PreyNotifierDB then
+        PreyNotifierDB["_ShowMinimapIcon"] = enabled
+    end
+    if enabled then PreyNotifierMinimapButton:Show() else PreyNotifierMinimapButton:Hide() end
+end)
+
 local AmbushStyleLabel = OptionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-AmbushStyleLabel:SetPoint("TOPLEFT", ShowEchoWarnSubtext, "BOTTOMLEFT", 0, -10)
+AmbushStyleLabel:SetPoint("TOPLEFT", MinimapIconSubtext, "BOTTOMLEFT", 0, -10)
 AmbushStyleLabel:SetText("Ambush Graphic Style:")
 
 local AmbushStyleDropDown = CreateFrame("Frame", "PreyNotifierAmbushStyleDropDown", OptionsContent, "UIDropDownMenuTemplate")
@@ -1162,6 +1222,9 @@ UIFrame:SetScript("OnShow", function()
     if PreyNotifierDB and PreyNotifierDB["_ShowEchoWarning"] ~= nil then
         ShowEchoWarnChk:SetChecked(PreyNotifierDB["_ShowEchoWarning"])
     end
+    if PreyNotifierDB and PreyNotifierDB["_ShowMinimapIcon"] ~= nil then
+        MinimapIconChk:SetChecked(PreyNotifierDB["_ShowMinimapIcon"])
+    end
     if PreyNotifierDB then
         local selected = GetAmbushGraphicOption(PreyNotifierDB["_AmbushGraphicStyle"])
         UIDropDownMenu_SetSelectedValue(AmbushStyleDropDown, selected.key)
@@ -1216,14 +1279,31 @@ end)
 InputBox:SetScript("OnEnterPressed", function(self) AddButton:Click() end)
 
 -- ==========================================
+-- ADDON COMPARTMENT FRAME LOGIN (Minimap Dropdown)
+-- ==========================================
+_G.PreyNotifier_OnCompartmentClick = function(addonName, buttonName)
+    if InCombatLockdown() then
+        print("|cffFF0000PreyNotifier:|r Cannot open menu while in combat!")
+        return
+    end
+
+    if UIFrame:IsShown() then
+        UIFrame:Hide()
+    else
+        UIFrame:Show()
+    end
+end
+
+-- ==========================================
 -- 2. SLASH COMMANDS
 -- ==========================================
+
+
 SLASH_PREY1 = "/prey"
 SLASH_PREY2 = "/pn"
 SLASH_PREY3 = "/preynotifier"
 SlashCmdList["PREY"] = function(msg)
-    local command, rest = msg:match("^(%S*)%s*(.-)$")
-    
+local command, rest = msg:match("^(%S*)%s*(.-)$")
 	if command == "" then
         if UIFrame:IsShown() then
             UIFrame:Hide()
@@ -1353,7 +1433,7 @@ end)
 -- ==========================================
 
 -- ------------------------------------------
--- DAGGER TRACKER UI SETUP (Standalone & Movable)
+-- GUILD LOGO TRACKER UI SETUP (Standalone & Movable)
 -- ------------------------------------------
 -- Reusing the name "PreyNotifierProgBar" so your saved position still works!
 CustomTracker = CreateFrame("Frame", "PreyNotifierProgBar", UIParent)
@@ -1388,27 +1468,27 @@ CustomTracker:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- Base empty background
 local Background = CustomTracker:CreateTexture(nil, "BACKGROUND")
 Background:SetAllPoints()
-Background:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\dagger_base.tga")
+Background:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\guild_base.tga")
 
 -- Piece 1 (33%)
 local Stage1 = CustomTracker:CreateTexture(nil, "ARTWORK")
 Stage1:SetAllPoints()
-Stage1:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\dagger_level_one.tga")
+Stage1:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\guild_level_one.tga")
 
 -- Piece 2 (66%)
 local Stage2 = CustomTracker:CreateTexture(nil, "ARTWORK")
 Stage2:SetAllPoints()
-Stage2:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\dagger_level_two.tga")
+Stage2:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\guild_level_two.tga")
 
 -- Piece 3 (100%)
 local Stage3 = CustomTracker:CreateTexture(nil, "ARTWORK")
 Stage3:SetAllPoints()
-Stage3:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\dagger_full.tga")
+Stage3:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\guild_full.tga")
 
 -- Load the Glow Art
 local GlowArt = CustomTracker:CreateTexture(nil, "BORDER")
 GlowArt:SetAllPoints()
-GlowArt:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\dagger_glow.tga")
+GlowArt:SetTexture("Interface\\AddOns\\PreyNotifier\\Art\\guild_glow.tga")
 GlowArt:SetBlendMode("ADD")
 GlowArt:SetVertexColor(1, 1, 0)
 GlowArt:SetAlpha(0) 
@@ -1422,7 +1502,7 @@ AlphaAnim:SetToAlpha(1.0)
 AlphaAnim:SetDuration(1.2)  
 GlowPulse:Play()
 
--- Keep the text below the dagger
+-- Keep the text below the guildlogo
 CustomTracker.textBg = CustomTracker:CreateTexture(nil, "BACKGROUND")
 CustomTracker.textBg:SetColorTexture(0, 0, 0, 0.6) -- Semi-transparent black background
 
@@ -1502,11 +1582,18 @@ local function ShowWarningGraphic(warningType)
     local root = "Interface\\AddOns\\PreyNotifier\\Art\\"
     if warningType == "echo" then
         AmbushTexture:SetTexture(root .. "echo.tga")
-        AmbushGlow:SetTexture(root .. "echo_glow.tga")
+        AmbushGlow:Hide()
     else
         local selected = GetAmbushGraphicOption(PreyNotifierDB and PreyNotifierDB["_AmbushGraphicStyle"])
         AmbushTexture:SetTexture(root .. selected.texture)
-        AmbushGlow:SetTexture(root .. selected.glow)
+        if selected.key == "ambushed_shield" then
+            AmbushGlow:Hide()
+        else
+            -- Use the custom glow texture for other styles
+            AmbushGlow:Show()
+            AmbushGlow:SetTexture(root .. selected.glow)
+            AmbushGlow:SetVertexColor(1, 1, 1) -- Reset to white for custom glow textures
+        end
     end
 
     currentWarningType = warningType
@@ -1529,7 +1616,14 @@ ApplyAmbushWarningStyle = function(styleKey)
     local root = "Interface\\AddOns\\PreyNotifier\\Art\\"
     if currentWarningType ~= "echo" then
         AmbushTexture:SetTexture(root .. selected.texture)
-        AmbushGlow:SetTexture(root .. selected.glow)
+        if selected.key == "ambushed_shield" then
+            AmbushGlow:Hide()
+        else
+            -- Use the custom glow texture for other styles
+            AmbushGlow:Show()
+            AmbushGlow:SetTexture(root .. selected.glow)
+            AmbushGlow:SetVertexColor(1, 1, 1) -- Reset to white for custom glow textures
+        end
     end
 end
 
@@ -1723,6 +1817,13 @@ UpdateDebuffs = function()
 
     -- Bloody Command Check
     local bcAura = FindPlayerDebuff("Bloody Command")
+
+    -- Explicitly clear the active state if the aura is gone and we are not in combat.
+    -- This prevents the timer from continuing to run after a fight ends.
+    if not bcAura and not InCombatLockdown() then
+        BCFrame.isActive = false
+    end
+
     local isBCActive = bcAura or BCFrame.isActive
 
     if isBCActive then
@@ -1898,23 +1999,11 @@ UpdateProgressBar = function()
                                 else pct = 0; stageName = "Begin the Hunt" end
                             end
                             
-                            -- GRAPHICAL DAGGER LOGIC
+                            -- GRAPHICAL PROGRESS LOGIC
                             if pct >= 33 then Stage1:Show() else Stage1:Hide() end
                             if pct >= 66 then Stage2:Show() else Stage2:Hide() end
                             if pct >= 100 then Stage3:Show() else Stage3:Hide() end
 
-							--[[ GRAPHICAL DAGGER LOGIC (Exclusive Layering)
-                            Stage1:Hide()
-                            Stage2:Hide()
-                            Stage3:Hide()
-                            
-                            if pct >= 100 then
-                                Stage3:Show()
-                            elseif pct >= 66 then
-                                Stage2:Show()
-                            elseif pct >= 33 then
-                                Stage1:Show()
-                            end]]
 
 							-- GLOW LOGIC (Only active at 100%)
                             if pct >= 100 then
@@ -2189,6 +2278,9 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         if PreyNotifierDB["_ShowEchoWarning"] == nil then
             PreyNotifierDB["_ShowEchoWarning"] = true
         end
+        if PreyNotifierDB["_ShowMinimapIcon"] == nil then
+            PreyNotifierDB["_ShowMinimapIcon"] = true
+        end
         if PreyNotifierDB["_AmbushGraphicStyle"] == nil then
             PreyNotifierDB["_AmbushGraphicStyle"] = "sharp_blood"
         end
@@ -2209,6 +2301,9 @@ PreyAddon:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         if CustomTracker and CustomTracker.AmbushWarning and PreyNotifierDB["_ShowAmbushWarning"] == false then
             CustomTracker.AmbushWarning:Hide()
+        end
+        if PreyNotifierDB["_ShowMinimapIcon"] == false then
+            PreyNotifierMinimapButton:Hide()
         end
         
         -- Load Progress Bar saved position

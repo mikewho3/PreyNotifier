@@ -6,4 +6,6 @@
 ## SavedVariables: PreyNotifierDB
 ## X-Wago-ID: kGryL7Ky
 ## X-Curse-Project-ID: 1484351
+## AddonCompartmentFunc: PreyNotifier_OnCompartmentClick
+## IconTexture: Interface\AddOns\PreyNotifier\Art\preynotifier_minibutton.png
 PreyNotifier.lua
